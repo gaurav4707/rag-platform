@@ -1,4 +1,4 @@
-from rag.agent import build_agent
+from rag.rag_agent import build_agent
 
 
 class RAGService:

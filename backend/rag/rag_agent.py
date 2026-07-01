@@ -4,6 +4,6 @@ from config import LLM_MODEL
 from rag.retriever import retrieve_context
 from rag.prompts import prompt_with_context
 
-model = init_chat_model(LLM_MODEL)
 def build_agent():
+    model = init_chat_model(LLM_MODEL)
     return create_agent(model, tools=[retrieve_context], middleware=[prompt_with_context])
