@@ -1,6 +1,6 @@
-from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from config import EMBEDDING_MODEL
+from langchain_huggingface import HuggingFaceEmbeddings
 
-embeddings = GoogleGenerativeAIEmbeddings(
-    model=EMBEDDING_MODEL
+embeddings = HuggingFaceEmbeddings(
+    model_name=EMBEDDING_MODEL
 )

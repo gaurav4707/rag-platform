@@ -1,3 +1,6 @@
+import truststore
+truststore.inject_into_ssl()
+
 from fastapi import FastAPI
 
 from api.chat import router as chat_router

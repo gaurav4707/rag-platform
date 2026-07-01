@@ -30,8 +30,8 @@ CHROMA_COLLECTION_NAME = "example_collection"
 # Models
 # -----------------------------------------------------------------------------
 
-LLM_MODEL = "google_genai:gemini-2.5-flash"
-EMBEDDING_MODEL = "gemini-embedding-2-preview"
+LLM_MODEL = "groq:llama-3.1-8b-instant"
+EMBEDDING_MODEL = "BAAI/bge-base-en-v1.5"
 
 # -----------------------------------------------------------------------------
 # Text Splitting

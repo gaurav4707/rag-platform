@@ -1,4 +1,3 @@
-import os
 import bs4
 from config import DEFAULT_SOURCE_URL
 from langchain_chroma import Chroma
@@ -8,7 +7,7 @@ from rag.splitter import text_splitter
 from config import BS4_CLASSES
 from config import CHROMA_DB_DIR, CHROMA_COLLECTION_NAME
 
-bs4_strainer = bs4.SoupStrainer(class_=BS4_CLASSES)
+bs4_strainer = bs4.filter.SoupStrainer(class_=BS4_CLASSES)
 def get_vector_store():
     vector_store = Chroma(
     collection_name=CHROMA_COLLECTION_NAME,
