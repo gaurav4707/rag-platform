@@ -21,6 +21,13 @@ CHROMA_DB_DIR = STORAGE_DIR / "chroma_langchain_db"
 STORAGE_DIR.mkdir(parents=True, exist_ok=True)
 CHROMA_DB_DIR.mkdir(parents=True, exist_ok=True)
 # -----------------------------------------------------------------------------
+# Uploads
+# -----------------------------------------------------------------------------
+
+UPLOAD_DIR = STORAGE_DIR / "uploads"
+UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+
+# -----------------------------------------------------------------------------
 # ChromaDB
 # -----------------------------------------------------------------------------
 

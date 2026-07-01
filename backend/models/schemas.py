@@ -9,3 +9,9 @@ class ChatResponse(BaseModel):
 
 class HealthResponse(BaseModel):
     status: str
+
+
+class UploadResponse(BaseModel):
+    document_id: str
+    filename: str
+    status: str

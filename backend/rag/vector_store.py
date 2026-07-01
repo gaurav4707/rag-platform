@@ -1,47 +1,50 @@
-import bs4
-
 from langchain_chroma import Chroma
 
-from config import (
-    BS4_CLASSES,
-    CHROMA_COLLECTION_NAME,
-    CHROMA_DB_DIR,
-    DEFAULT_SOURCE_URL,
-)
+from config import CHROMA_COLLECTION_NAME, CHROMA_DB_DIR
 from rag.embeddings import embeddings
-from rag.loader import load_web_page
-from rag.splitter import text_splitter
+
+_collection: Chroma | None = None
 
 
-bs4_strainer = bs4.filter.SoupStrainer(class_=BS4_CLASSES)
+def _get_collection() -> Chroma:
+    """Return the cached Chroma vector store collection."""
+    global _collection
+    if _collection is None:
+        _collection = Chroma(
+            collection_name=CHROMA_COLLECTION_NAME,
+            embedding_function=embeddings,
+            persist_directory=str(CHROMA_DB_DIR),
+        )
+    return _collection
 
 
-def get_vector_store():
-    """Return the Chroma vector store."""
-
-    return Chroma(
-        collection_name=CHROMA_COLLECTION_NAME,
-        embedding_function=embeddings,
-        persist_directory=str(CHROMA_DB_DIR),
-    )
+def similarity_search(query: str, k: int = 4) -> list:
+    """Search for similar documents in the vector store."""
+    return _get_collection().similarity_search(query, k=k)
 
 
-def index_documents():
-    """Load, split and index documents."""
+def add_documents(docs: list) -> None:
+    """Add documents to the vector store."""
+    _get_collection().add_documents(docs)
 
-    vector_store = get_vector_store()
 
-    # Clear existing data to avoid duplicates during development
-    vector_store.delete_collection()
-    vector_store = get_vector_store()
+def delete_document(document_id: str) -> None:
+    """Delete all chunks associated with a given document_id."""
+    _get_collection().delete(where={"document_id": document_id})
 
-    docs = load_web_page(
-        DEFAULT_SOURCE_URL,
-        bs_kwargs={"parse_only": bs4_strainer},
-    )
 
-    splits = text_splitter.split_documents(docs)
-
-    vector_store.add_documents(splits)
-
-    print(f"Indexed {len(splits)} chunks.")
+def list_documents() -> list[dict]:
+    """List unique documents in the vector store."""
+    collection = _get_collection()
+    all_data = collection.get()
+    seen = set()
+    documents = []
+    for metadata in all_data.get("metadatas", []):
+        doc_id = metadata.get("document_id")
+        if doc_id and doc_id not in seen:
+            seen.add(doc_id)
+            documents.append({
+                "document_id": doc_id,
+                "filename": metadata.get("filename", "unknown"),
+            })
+    return documents

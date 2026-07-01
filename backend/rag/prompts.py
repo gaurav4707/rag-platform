@@ -1,5 +1,5 @@
 from langchain.agents.middleware import ModelRequest, dynamic_prompt
-from rag.vector_store import get_vector_store
+from rag.vector_store import similarity_search
 from config import TOP_K
 
 
@@ -7,11 +7,9 @@ from config import TOP_K
 def prompt_with_context(request: ModelRequest) -> str:
     """Inject context into state messages."""
 
-    vector_store = get_vector_store()
-
     last_query = request.state["messages"][-1].text
 
-    retrieved_docs = vector_store.similarity_search(last_query, TOP_K)
+    retrieved_docs = similarity_search(last_query, TOP_K)
 
     seen = set()
     unique_docs = []

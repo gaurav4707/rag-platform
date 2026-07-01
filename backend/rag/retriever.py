@@ -1,15 +1,13 @@
 from langchain.tools import tool
 
-from rag.vector_store import get_vector_store
+from rag.vector_store import similarity_search
 
 
 @tool(response_format="content_and_artifact")
 def retrieve_context(query: str):
     """Retrieve information to help answer a query."""
 
-    vector_store = get_vector_store()
-
-    retrieved_docs = vector_store.similarity_search(query, k=2)
+    retrieved_docs = similarity_search(query, k=2)
 
     serialized = "\n\n".join(
         f"Source: {doc.metadata}\nContent: {doc.page_content}"

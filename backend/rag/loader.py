@@ -1,9 +1,8 @@
-import bs4
-import requests
+from langchain_community.document_loaders import PyPDFLoader
 from langchain_core.documents import Document
 
-def load_web_page(url: str, bs_kwargs: dict | None = None) -> list[Document]:
-    response = requests.get(url, timeout=20)
-    response.raise_for_status()
-    soup = bs4.BeautifulSoup(response.text, "html.parser", **(bs_kwargs or {}))
-    return [Document(page_content=soup.get_text(), metadata={"source": url})]
+
+def load_pdf(file_path: str) -> list[Document]:
+    """Load a PDF document from the filesystem and return pages as Documents."""
+    loader = PyPDFLoader(file_path)
+    return loader.load()
