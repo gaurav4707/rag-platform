@@ -2,6 +2,7 @@ from fastapi import APIRouter, UploadFile, File, HTTPException, status
 
 from models.schemas import UploadResponse
 from services.document_service import process_upload
+from api.errors import AppError, ERROR_CODES
 
 router = APIRouter(tags=["documents"])
 
@@ -9,25 +10,28 @@ router = APIRouter(tags=["documents"])
 @router.post("/documents/upload", response_model=UploadResponse)
 async def upload_document(file: UploadFile = File(...)):
     if not file.filename or not file.filename.lower().endswith(".pdf"):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Only PDF files are accepted",
+        raise AppError(
+            ERROR_CODES["INVALID_FILE"],
+            "Only PDF files are accepted.",
+            http_status=status.HTTP_400_BAD_REQUEST,
         )
 
     content = await file.read()
 
     if not content:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Uploaded file is empty",
+        raise AppError(
+            ERROR_CODES["INVALID_FILE"],
+            "Uploaded file is empty.",
+            http_status=status.HTTP_400_BAD_REQUEST,
         )
 
     try:
         result = process_upload(content, file.filename)
     except ValueError as e:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=str(e),
+        raise AppError(
+            ERROR_CODES["INDEXING_FAILED"],
+            str(e),
+            http_status=status.HTTP_422_UNPROCESSABLE_ENTITY,
         )
 
     return UploadResponse(**result)

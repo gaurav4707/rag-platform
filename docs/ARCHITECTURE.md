@@ -65,14 +65,15 @@ project/
 │   ├── config.py
 │   │
 │   ├── api/
-│   │     ├── upload.py
+│   │     ├── errors.py
 │   │     ├── chat.py
-│   │     └── documents.py
+│   │     ├── documents.py
+│   │     ├── health.py
+│   │     └── upload.py
 │   │
 │   ├── services/
-│   │     ├── rag_service.py
 │   │     ├── document_service.py
-│   │     └── chat_service.py
+│   │     └── rag_service.py
 │   │
 │   ├── rag/
 │   │     ├── loader.py
@@ -81,14 +82,14 @@ project/
 │   │     ├── vector_store.py
 │   │     ├── retriever.py
 │   │     ├── prompts.py
-│   │     └── agent.py
+│   │     └── rag_agent.py
 │   │
 │   ├── models/
 │   │     └── schemas.py
 │   │
 │   ├── storage/
 │   │     ├── uploads/
-│   │     └── chroma/
+│   │     └── chroma_langchain_db/
 │   │
 │   └── utils/
 │
@@ -127,6 +128,7 @@ Responsible for:
 * Validating inputs
 * Returning responses
 * Streaming tokens
+* Standardized error responses (via `api/errors.py`)
 
 The API layer must not implement business logic.
 
@@ -138,8 +140,8 @@ Responsible for:
 
 * Coordinating application workflows
 * Calling RAG components
-* Managing document lifecycle
-* Managing conversations
+* Managing document lifecycle (upload, list, delete)
+* Atomic cleanup on failure
 
 This is the project's orchestration layer.
 
@@ -165,8 +167,7 @@ The RAG layer should never know about HTTP, React, or UI concerns.
 Responsible for:
 
 * Uploaded PDFs
-* Vector database
-* Future metadata database
+* Vector database (ChromaDB SQLite)
 
 Storage should not contain application logic.
 
@@ -186,22 +187,33 @@ Upload API
 ↓
 
 Document Service
+  - Save PDF to storage/uploads/{document_id}.pdf
+  - Generate UUID document_id
+  - If any step fails: remove saved file + vector entries (atomic rollback)
 
 ↓
 
-Loader
+Loader (PyPDFLoader)
 
 ↓
 
-Splitter
+Splitter (RecursiveCharacterTextSplitter)
 
 ↓
 
-Embeddings
+Metadata Enrichment
+  - document_id
+  - filename
+  - chunk_index
+  - page number (from loader)
 
 ↓
 
-ChromaDB
+Embeddings (HuggingFace BGE)
+
+↓
+
+ChromaDB (PersistentClient, auto-persisted to SQLite)
 ```
 
 ---
@@ -214,30 +226,69 @@ User Question
 ↓
 
 Chat API
+  - Build sources from similarity search
 
 ↓
 
-Chat Service
+RAG Service
 
 ↓
 
-Retriever
+Agent
+  - Retrieves context via retriever tool
+  - Builds prompt via prompt_with_context middleware
+  - Generates answer via LLM
 
 ↓
 
-Prompt Builder
+Chat Response
+  - answer (text)
+  - sources (filename, page, document_id, score)
+  - tool_calls (debug info)
+```
+
+---
+
+## List Documents
+
+```
+GET /documents
 
 ↓
 
-LLM
+Document Service
+  list_indexed_documents()
 
 ↓
 
-Stream Response
+Vector Store
+  Chroma.get() → unique document_ids from metadata
 
 ↓
 
-Frontend
+Response
+  [{document_id, filename, status}]
+```
+
+---
+
+## Delete Document
+
+```
+DELETE /documents/{document_id}
+
+↓
+
+Document Service
+  delete_document(document_id)
+  - Check document exists → 404 if not
+  - Delete vectors from ChromaDB
+  - Delete PDF from storage/uploads/
+
+↓
+
+Response
+  {status: "deleted"}
 ```
 
 ---
@@ -277,6 +328,10 @@ Examples:
 * add documents
 * delete documents
 * similarity search
+* similarity search with scores
+* list unique documents from metadata
+
+Uses a cached singleton `Chroma` instance for connection reuse.
 
 ---
 
@@ -284,7 +339,7 @@ Examples:
 
 Responsible only for retrieving relevant chunks.
 
-It must not generate prompts.
+Returns both serialized content (for the LLM) and document objects (as artifact).
 
 ---
 
@@ -292,13 +347,23 @@ It must not generate prompts.
 
 Responsible only for creating system prompts.
 
-It must not retrieve documents.
+---
+
+## rag_agent.py
+
+Responsible only for building the LangChain agent with tools and middleware.
 
 ---
 
-## agent.py
+## api/errors.py
 
-Responsible only for interacting with the LLM.
+Responsible for standardized error responses.
+
+Provides:
+
+* `AppError` exception class with machine-readable error codes
+* Exception handlers for `AppError` and `HTTPException`
+* Error code constants (INVALID_FILE, DOCUMENT_NOT_FOUND, INDEXING_FAILED, VECTOR_STORE_ERROR, INTERNAL_SERVER_ERROR)
 
 ---
 

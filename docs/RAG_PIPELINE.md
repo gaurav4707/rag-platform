@@ -54,18 +54,19 @@ research-paper.pdf
 
 The file is uploaded through the Upload API.
 
-The original PDF is stored locally.
+The original PDF is saved to `storage/uploads/{document_id}.pdf`.
 
 Responsibilities:
 
-* Validate file type
-* Generate document ID
-* Save original file
+* Validate file type (PDF only)
+* Reject empty files
+* Generate UUID document ID
+* Save original file to disk
 
 Output:
 
 ```text
-Stored PDF
+Stored PDF at storage/uploads/{document_id}.pdf
 ```
 
 ---
@@ -78,16 +79,18 @@ Module:
 loader.py
 ```
 
+Tool: `PyPDFLoader`
+
 Responsibilities:
 
 * Read PDF
-* Extract text
-* Preserve metadata
+* Extract text per page
+* Preserve metadata (page number, source path)
 
 Output:
 
 ```text
-Document
+List[Document] — one per page, with metadata.source and metadata.page
 ```
 
 The loader should not:
@@ -98,7 +101,18 @@ The loader should not:
 
 ---
 
-## Step 3 — Split Document
+## Step 3 — Enrich Metadata
+
+Before splitting, each Document's metadata is enriched with:
+
+* `document_id` — UUID string, identifies the uploaded document
+* `filename` — original filename from the upload
+
+This metadata is preserved through splitting and stored in ChromaDB alongside each chunk.
+
+---
+
+## Step 4 — Split Document
 
 Module:
 
@@ -106,37 +120,33 @@ Module:
 splitter.py
 ```
 
+Tool: `RecursiveCharacterTextSplitter`
+
+Parameters from `config.py`:
+
+* `CHUNK_SIZE = 1000` characters
+* `CHUNK_OVERLAP = 200` characters
+* `add_start_index = True` — tracks position in original text
+
 Responsibilities:
 
 * Split document into chunks
-* Preserve overlap
-* Preserve metadata
+* Preserve overlap for context continuity
+* Preserve all metadata from parent document
 
-Example:
+After splitting, each chunk additionally receives:
+
+* `chunk_index` — ordinal position within the document (0-based)
+
+Output:
 
 ```text
-Page 1
-
-↓
-
-Chunk 1
-Chunk 2
-Chunk 3
+List[Document] — chunks with inherited metadata
 ```
-
-Current strategy:
-
-* Recursive Character Text Splitter
-
-Future strategies may include:
-
-* Semantic chunking
-* Markdown-aware chunking
-* Token-aware chunking
 
 ---
 
-## Step 4 — Generate Embeddings
+## Step 5 — Generate Embeddings
 
 Module:
 
@@ -144,36 +154,17 @@ Module:
 embeddings.py
 ```
 
+Model: `BAAI/bge-base-en-v1.5` via HuggingFaceEmbeddings
+
 Responsibilities:
 
-Convert each chunk into a numerical vector.
+* Convert each chunk into a numerical vector (768 dimensions)
 
-Example:
-
-```text
-Chunk
-
-↓
-
-Embedding Vector
-```
-
-Current embedding model:
-
-* Gemini Embeddings
-
-Future providers:
-
-* Hugging Face
-* OpenAI
-* Nomic
-* Local models
-
-The embedding module should be replaceable without affecting the rest of the system.
+The embedding module is provider-agnostic and can be replaced without affecting other components.
 
 ---
 
-## Step 5 — Store Vectors
+## Step 6 — Store Vectors
 
 Module:
 
@@ -181,28 +172,56 @@ Module:
 vector_store.py
 ```
 
+Database: ChromaDB (PersistentClient)
+
+Storage: `storage/chroma_langchain_db/chroma.sqlite3`
+
 Responsibilities:
 
-Store:
+* Store embeddings
+* Store chunk text (for retrieval)
+* Store metadata (document_id, filename, page, chunk_index)
 
-* Embeddings
-* Chunk text
-* Metadata
+Each Chroma entry contains:
 
-Current implementation:
+| Field         | Source              |
+|---------------|---------------------|
+| `page_content`| Chunk text          |
+| `document_id` | From metadata       |
+| `filename`    | From metadata       |
+| `page`        | From PyPDFLoader    |
+| `chunk_index` | From splitter       |
+| `source`      | File path           |
 
-```text
-ChromaDB
+### Persistence
+
+ChromaDB's PersistentClient auto-persists all data to SQLite on every write operation. No explicit `persist()` call is needed.
+
+The `_collection` instance is cached as a module-level singleton to avoid creating multiple connections to the same database during the application lifecycle.
+
+### Atomic Rollback
+
+If any step in the indexing pipeline fails:
+
+1. The saved PDF file is removed from `storage/uploads/`
+2. Vector entries for that `document_id` are deleted from ChromaDB
+3. The error is propagated to the API layer
+
+This prevents orphaned files or ghost vectors.
+
+---
+
+## Step 7 — Verify Indexing
+
+Output:
+
+```json
+{
+  "document_id": "uuid-string",
+  "filename": "research.pdf",
+  "status": "indexed"
+}
 ```
-
-Future implementations may include:
-
-* FAISS
-* Qdrant
-* Pinecone
-* Milvus
-
-The rest of the application should not depend on a specific vector database.
 
 ---
 
@@ -224,41 +243,7 @@ The question is sent to the Chat API.
 
 ---
 
-## Step 2 — Retrieve Relevant Chunks
-
-Module:
-
-```text
-retriever.py
-```
-
-Responsibilities:
-
-* Search vector database
-* Find most relevant chunks
-* Remove duplicates if necessary
-
-Current retrieval:
-
-```text
-Similarity Search
-```
-
-Future improvements:
-
-* MMR (Maximal Marginal Relevance)
-* Hybrid Search
-* Metadata Filtering
-* Query Expansion
-* Parent Document Retrieval
-
-The retriever should only retrieve documents.
-
-It should never construct prompts.
-
----
-
-## Step 3 — Build Prompt
+## Step 2 — Build Prompt Context
 
 Module:
 
@@ -266,27 +251,28 @@ Module:
 prompts.py
 ```
 
-Responsibilities:
+The `prompt_with_context` middleware:
 
-Create the final prompt for the LLM.
+1. Extracts the last user message from the conversation state
+2. Calls `similarity_search(query, TOP_K=8)` to retrieve relevant chunks
+3. Deduplicates by page content
+4. Inserts retrieved content into the system prompt
 
-The prompt should contain:
+---
 
-* System instructions
-* Retrieved context
-* User question
+## Step 3 — Retrieve Context (Tool)
 
-Example structure:
+Module:
 
 ```text
-System Instructions
-
-Retrieved Context
-
-User Question
+retriever.py
 ```
 
-The prompt builder should never perform retrieval.
+The `retrieve_context` tool (used by the agent):
+
+1. Receives the user query
+2. Calls `similarity_search(query, k=2)` — a focused retrieval
+3. Returns serialized content for the LLM, with Document objects as artifact
 
 ---
 
@@ -295,38 +281,58 @@ The prompt builder should never perform retrieval.
 Module:
 
 ```text
-agent.py
+rag_agent.py
 ```
 
-Responsibilities:
+Process:
 
-* Call the LLM
-* Stream tokens
-* Return final response
+1. Agent receives the prompt with context (from Step 2)
+2. Agent may call the retrieve_context tool (from Step 3)
+3. LLM generates the answer grounded in the retrieved context
+4. Tokens are streamed back to the API
 
 Current LLM:
 
-* Gemini Flash
-
-Future providers:
-
-* OpenAI
-* Anthropic
-* Local models
-* OpenRouter
+```text
+groq:llama-3.1-8b-instant
+```
 
 ---
 
-## Step 5 — Return Sources
+## Step 5 — Build Source Citations
 
-The final response should include:
+Module:
 
-* Answer
-* Source chunks
-* Document names
-* Page numbers (when available)
+```text
+api/chat.py
+```
 
-This enables users to verify where information originated.
+After the LLM response is complete, the chat endpoint:
+
+1. Runs an independent `similarity_search_with_scores(query, k=4)`
+2. Extracts metadata from each returned document
+3. Builds `SourceItem` objects:
+
+```json
+{
+  "document": "research.pdf",
+  "page": 7,
+  "document_id": "uuid-string",
+  "score": 0.4521
+}
+```
+
+Note: The score is a raw distance value from ChromaDB (lower = more similar). This will be replaced with a normalized relevance score in a future iteration.
+
+---
+
+## Step 6 — Return Response
+
+Final response includes:
+
+* `answer` — LLM-generated text
+* `sources` — list of SourceItem with metadata
+* `tool_calls` — debug information about tool invocations
 
 ---
 
@@ -337,19 +343,23 @@ PDF
 
 ↓
 
-Loader
+Loader (PyPDFLoader)
 
 ↓
 
-Recursive Splitter
+Metadata Enrichment (document_id, filename)
 
 ↓
 
-Gemini Embeddings
+RecursiveCharacterTextSplitter
 
 ↓
 
-ChromaDB
+HuggingFace Embeddings (BGE)
+
+↓
+
+ChromaDB (PersistentClient)
 
 ────────────────────────────
 
@@ -357,19 +367,23 @@ Question
 
 ↓
 
-Retriever
+Prompt Builder (TOP_K=8)
 
 ↓
 
-Prompt Builder
+Agent
+
+  ├── Retriever Tool (k=2)
+
+  └── LLM (groq:llama-3.1-8b-instant)
 
 ↓
 
-Gemini Flash
+Source Builder (similarity_search_with_scores, k=4)
 
 ↓
 
-Answer + Sources
+Answer + Sources + Tool Calls
 ```
 
 ---

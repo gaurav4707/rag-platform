@@ -20,6 +20,7 @@ CHROMA_DB_DIR = STORAGE_DIR / "chroma_langchain_db"
 # Create directories if they don't exist
 STORAGE_DIR.mkdir(parents=True, exist_ok=True)
 CHROMA_DB_DIR.mkdir(parents=True, exist_ok=True)
+
 # -----------------------------------------------------------------------------
 # Uploads
 # -----------------------------------------------------------------------------
@@ -52,17 +53,3 @@ CHUNK_OVERLAP = 200
 # -----------------------------------------------------------------------------
 
 TOP_K = 8
-
-# -----------------------------------------------------------------------------
-# Initial Knowledge Source (Temporary)
-# -----------------------------------------------------------------------------
-
-DEFAULT_SOURCE_URL = (
-    "https://lilianweng.github.io/posts/2023-06-23-agent/"
-)
-
-BS4_CLASSES = (
-    "post-title",
-    "post-header",
-    "post-content",
-)

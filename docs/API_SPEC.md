@@ -102,11 +102,11 @@ Fields
 | ----- | ---- | -------- |
 | file  | PDF  | Yes      |
 
-### Success Response
+### Success Response (201)
 
 ```json
 {
-  "document_id": "doc_123",
+  "document_id": "uuid-string",
   "filename": "research.pdf",
   "status": "indexed"
 }
@@ -116,13 +116,19 @@ Fields
 
 ```json
 {
-  "error": "Invalid file type"
+  "error": {
+    "code": "INVALID_FILE",
+    "message": "Only PDF files are accepted."
+  }
 }
 ```
 
 ```json
 {
-  "error": "Document indexing failed"
+  "error": {
+    "code": "INDEXING_FAILED",
+    "message": "PDF contains no extractable text"
+  }
 }
 ```
 
@@ -136,20 +142,27 @@ Purpose
 
 Return all indexed documents.
 
-### Success Response
+### Success Response (200)
 
 ```json
 [
     {
-        "document_id": "doc_123",
-        "filename": "research.pdf"
+        "document_id": "uuid-string",
+        "filename": "research.pdf",
+        "status": "indexed"
     },
     {
-        "document_id": "doc_456",
-        "filename": "notes.pdf"
+        "document_id": "uuid-string",
+        "filename": "notes.pdf",
+        "status": "indexed"
     }
 ]
 ```
+
+### Notes
+
+* Source of truth is the ChromaDB metadata. The uploads directory is not scanned.
+* Deduplicated by `document_id`.
 
 ---
 
@@ -161,7 +174,7 @@ Purpose
 
 Remove a document and its associated vectors.
 
-### Success Response
+### Success Response (200)
 
 ```json
 {
@@ -173,9 +186,18 @@ Remove a document and its associated vectors.
 
 ```json
 {
-    "error": "Document not found"
+    "error": {
+        "code": "DOCUMENT_NOT_FOUND",
+        "message": "Document not found."
+    }
 }
 ```
+
+### Behavior
+
+1. Removes all vector entries for the `document_id` from ChromaDB.
+2. Removes the stored PDF from `storage/uploads/`.
+3. Returns 404 if the document does not exist.
 
 ---
 
@@ -195,20 +217,37 @@ Ask a question about uploaded documents.
 }
 ```
 
-### Response (Non-streaming)
+### Response (200)
 
 ```json
 {
-    "answer": "...",
+    "answer": "ReAct is a framework that combines reasoning and acting...",
     "sources": [
         {
             "document": "research.pdf",
             "page": 7,
-            "score": 0.91
+            "document_id": "uuid-string",
+            "score": 0.4521
         }
     ]
 }
 ```
+
+### Fields
+
+| Field       | Type   | Description                                    |
+|-------------|--------|------------------------------------------------|
+| answer      | string | LLM-generated response                         |
+| sources     | array  | Retrieved documents with metadata               |
+| sources[].document   | string | Original filename                     |
+| sources[].page       | int    | Page number (from PyPDFLoader)        |
+| sources[].document_id| string | UUID of the source document           |
+| sources[].score      | float  | Distance score from ChromaDB (lower = closer) |
+
+### Validation
+
+* Message cannot be empty.
+* Leading/trailing whitespace is preserved (no trimming).
 
 ---
 
@@ -220,13 +259,7 @@ Purpose
 
 Receive the LLM response as a stream.
 
-### Request
-
-```json
-{
-    "message": "Explain ReAct."
-}
-```
+This endpoint is planned but not yet implemented.
 
 ### Stream Events
 
@@ -250,37 +283,24 @@ The frontend should progressively render tokens.
 
 # 6. Standard Response Format
 
-Successful responses should use:
+Successful responses return the resource directly:
 
 ```json
-{
-    "data": {}
-}
-```
+// Single object
+{ "document_id": "...", "filename": "...", "status": "indexed" }
 
-or
+// List
+[{ "document_id": "..." }, { "document_id": "..." }]
 
-```json
-{
-    "data": []
-}
-```
-
-Example
-
-```json
-{
-    "data": {
-        "document_id": "doc_123"
-    }
-}
+// Status
+{ "status": "deleted" }
 ```
 
 ---
 
 # 7. Standard Error Format
 
-All errors should follow a consistent structure.
+All errors follow a consistent structure:
 
 ```json
 {
@@ -291,13 +311,15 @@ All errors should follow a consistent structure.
 }
 ```
 
-Example codes
+### Error Codes
 
-* INVALID_FILE
-* DOCUMENT_NOT_FOUND
-* INDEXING_FAILED
-* VECTOR_STORE_ERROR
-* INTERNAL_SERVER_ERROR
+| Code                 | Description                         | HTTP Status |
+| -------------------- | ----------------------------------- | ----------- |
+| INVALID_FILE         | File type or content not accepted   | 400         |
+| DOCUMENT_NOT_FOUND   | Document does not exist             | 404         |
+| INDEXING_FAILED      | PDF extraction or indexing failed   | 422         |
+| VECTOR_STORE_ERROR   | ChromaDB operation failed           | 500         |
+| INTERNAL_SERVER_ERROR| Unexpected error                    | 500         |
 
 ---
 
@@ -325,11 +347,11 @@ Upload
 Chat
 
 * Message cannot be empty
-* Trim leading/trailing whitespace
+* Leading/trailing whitespace preserved
 
 Delete
 
-* Document must exist
+* Document must exist (returns 404 if not)
 
 ---
 

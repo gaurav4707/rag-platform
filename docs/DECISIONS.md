@@ -272,15 +272,13 @@ Gemini Models for Initial Development
 
 **Status**
 
-Accepted
+Superseded
 
 ### Decision
 
 Use Gemini for both embeddings and text generation during the initial implementation.
 
 ### Reason
-
-The current backend already uses Gemini successfully, minimizing additional changes while building the architecture.
 
 The design remains provider-agnostic so that models can be replaced later.
 
@@ -392,6 +390,192 @@ When practical, developers should understand:
 * why it exists
 * what alternatives exist
 * how it could be implemented manually
+
+---
+
+# ADR-010
+
+## Title
+
+Persistent Local Document Storage
+
+**Status**
+
+Accepted
+
+### Decision
+
+Uploaded PDFs are stored on the local filesystem under `storage/uploads/{document_id}.pdf`.
+
+### Reason
+
+The application is single-user and local. File system storage is the simplest option that meets the requirement.
+
+### Alternatives Considered
+
+* In-memory storage (lost on restart)
+* Database BLOB storage (premature for current scope)
+* Object storage (S3, GCS — adds unnecessary complexity)
+
+### Consequences
+
+Pros
+
+* Simple implementation
+* No additional dependencies
+* Files survive server restarts
+* Easy manual inspection
+
+Cons
+
+* Not suitable for multi-server deployments
+* No built-in backup strategy
+
+### Revisit When
+
+Multi-user support or cloud deployment is needed.
+
+---
+
+# ADR-011
+
+## Title
+
+Document Metadata Schema
+
+**Status**
+
+Accepted
+
+### Decision
+
+Document metadata is stored only in ChromaDB alongside each chunk.
+
+The metadata schema for each chunk is:
+
+| Field         | Type   | Example                         |
+|---------------|--------|---------------------------------|
+| document_id   | str    | uuid.uuid4()                    |
+| filename      | str    | "research.pdf"                  |
+| page          | int    | 7 (0-indexed, from PyPDFLoader)|
+| chunk_index   | int    | 0 (ordinal within document)     |
+| source        | str    | File path                       |
+
+Documents are uniquely identified by `document_id`. The ChromaDB metadata is the source of truth for document existence — the uploads directory is never scanned.
+
+### Reason
+
+Storing metadata in ChromaDB keeps the architecture simple (no additional database) while allowing the document list and deletion features to work correctly.
+
+### Alternatives Considered
+
+* SQLite database for document registry (cleaner separation, but adds complexity)
+* File-system scan (unreliable, conflicts with vector data)
+* JSON manifest file (race conditions on concurrent uploads)
+
+### Consequences
+
+Pros
+
+* Single source of truth
+* No additional database dependency
+* Document list available without file-system access
+* Delete operation can find all vectors by document_id
+
+Cons
+
+* Cannot retrieve document list if vector store is corrupted
+* Metadata is tightly coupled to vector storage
+
+### Revisit When
+
+A dedicated metadata database (e.g., SQLite) is introduced for conversation history or user settings.
+
+---
+
+# ADR-012
+
+## Title
+
+Standardized Error Response Format
+
+**Status**
+
+Accepted
+
+### Decision
+
+All API errors follow a consistent JSON format:
+
+```json
+{
+    "error": {
+        "code": "MACHINE_READABLE_CODE",
+        "message": "Human-readable description"
+    }
+}
+```
+
+Error codes are defined as constants in `api/errors.py`.
+
+### Reason
+
+A consistent error format simplifies frontend error handling and debugging.
+
+### Error Codes
+
+| Code                 | HTTP Status | Description                   |
+|----------------------|-------------|-------------------------------|
+| INVALID_FILE         | 400         | Bad file type or empty file   |
+| DOCUMENT_NOT_FOUND   | 404         | Document does not exist       |
+| INDEXING_FAILED      | 422         | PDF extraction/indexing error |
+| VECTOR_STORE_ERROR   | 500         | ChromaDB operation failure    |
+| INTERNAL_SERVER_ERROR| 500         | Unexpected error              |
+
+### Consequences
+
+Pros
+
+* Predictable error structure
+* Machine-readable codes for conditional handling
+* Human-readable messages for display
+
+Cons
+
+* Requires error handler registration in app.py
+
+---
+
+# ADR-013
+
+## Title
+
+Chroma Singleton Caching
+
+**Status**
+
+Accepted
+
+### Decision
+
+The Chroma vector store client is cached as a module-level singleton in `vector_store.py`.
+
+### Reason
+
+Creating a new `Chroma` instance on every request is wasteful. LangChain's Chroma wrapper uses the same approach internally with `get_or_create_collection()`.
+
+### Consequences
+
+Pros
+
+* Reuses the same persistent connection
+* Reduces latency on repeated requests
+* Consistent collection reference
+
+Cons
+
+* Module-level global state
+* Not thread-safe (acceptable for single-user)
 
 ---
 

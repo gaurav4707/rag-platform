@@ -33,6 +33,11 @@ def delete_document(document_id: str) -> None:
     _get_collection().delete(where={"document_id": document_id})
 
 
+def similarity_search_with_scores(query: str, k: int = 4) -> list[tuple]:
+    """Search for similar documents and return (Document, distance) tuples."""
+    return _get_collection().similarity_search_with_score(query, k=k)
+
+
 def list_documents() -> list[dict]:
     """List unique documents in the vector store."""
     collection = _get_collection()

@@ -32,7 +32,7 @@ The project is designed primarily for learning modern AI engineering practices w
 
 ## 3. Current Scope (MVP)
 
-### Backend
+### Backend — Implemented
 
 * Upload PDF documents
 * Extract text
@@ -43,14 +43,13 @@ The project is designed primarily for learning modern AI engineering practices w
 * Generate answers using an LLM
 * Stream responses
 * Return source citations
+* List indexed documents
+* Delete documents
+* Standardized error codes
 
 ### Frontend
 
-* Upload PDFs
-* List uploaded documents
-* Chat interface
-* Streaming responses
-* Display retrieved sources
+* Not yet implemented
 
 ---
 
@@ -96,7 +95,8 @@ No production deployment is planned during the initial development.
 * FastAPI
 * LangChain
 * ChromaDB
-* Gemini Models
+* HuggingFace Embeddings (BAAI/bge-base-en-v1.5)
+* Groq LLM (llama-3.1-8b-instant)
 * LangGraph (future)
 * SQLite (future)
 
@@ -111,17 +111,22 @@ No production deployment is planned during the initial development.
 
 ## 7. Project Milestones
 
-### Milestone 1
+### Milestone 1 — In Progress
 
-Backend Refactoring
+Backend Foundation
 
 Deliverables:
 
-* Modular architecture
-* Upload endpoint
-* Chat endpoint
-* Document management
-* Local vector database
+* Modular architecture — Done
+* Upload endpoint — Done
+* Chat endpoint — Done
+* List documents endpoint — Done
+* Delete document endpoint — Done
+* Source citations — Done
+* Standardized error handling — Done
+* Documentation updated — Done
+
+Manual verification required before marking as complete.
 
 ---
 
