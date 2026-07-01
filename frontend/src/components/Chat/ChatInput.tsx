@@ -37,28 +37,46 @@ export function ChatInput({ onSend, disabled = false }: ChatInputProps) {
   }
 
   return (
-    <div className="border-t border-gray-200 bg-white px-3 py-3 lg:px-6 lg:py-4">
-      <div className="flex gap-2">
-        <textarea
-          ref={textareaRef}
-          name="message"
-          rows={1}
-          placeholder="Ask a question..."
-          disabled={disabled}
-          onInput={autoResize}
-          onKeyDown={handleKeyDown}
-          className="min-h-[44px] flex-1 resize-none rounded-md border border-gray-300 px-3 py-2.5 text-sm leading-6 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:opacity-50"
-          aria-label="Chat message"
-        />
-        <button
-          type="button"
-          onClick={submit}
-          disabled={disabled}
-          className="min-h-[44px] self-end rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50"
-          aria-label="Send message"
-        >
-          Send
-        </button>
+    <div className="flex-shrink-0 border-t border-surface-200 bg-white px-4 py-3 lg:px-6 lg:py-4">
+      <div className="mx-auto w-full max-w-3xl">
+        <div className="flex items-end gap-2.5 rounded-xl border border-surface-300 bg-surface-50 px-3 py-2.5 transition-all duration-150 focus-within:border-accent-400 focus-within:bg-white focus-within:shadow-focus">
+          <textarea
+            ref={textareaRef}
+            name="message"
+            rows={1}
+            placeholder="Ask a question about your documents..."
+            disabled={disabled}
+            onInput={autoResize}
+            onKeyDown={handleKeyDown}
+            className="min-h-[24px] flex-1 resize-none bg-transparent text-sm leading-6 text-surface-800 placeholder:text-surface-400 focus:outline-none disabled:opacity-50"
+            aria-label="Chat message"
+          />
+          <button
+            type="button"
+            onClick={submit}
+            disabled={disabled}
+            className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-accent-600 text-white transition-all duration-150 hover:bg-accent-700 focus:outline-none focus:ring-2 focus:ring-accent-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-accent-600"
+            aria-label="Send message"
+          >
+            <svg
+              className="h-4 w-4"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={2}
+              aria-hidden="true"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M6 12L3.269 3.126A9.028 9.028 0 0112 3c4.97 0 9 4.03 9 9s-4.03 9-9 9-9-4.03-9-9m12 0c0-1.657-1.343-3-3-3s-3 1.343-3 3 1.343 3 3 3 3-1.343 3-3z"
+              />
+            </svg>
+          </button>
+        </div>
+        <p className="mt-1.5 px-1 text-xs text-surface-400">
+          Press Enter to send, Shift+Enter for a new line
+        </p>
       </div>
     </div>
   );
