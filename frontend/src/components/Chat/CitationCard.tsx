@@ -1,39 +1,36 @@
 interface CitationCardProps {
   document: string;
   page: number | null;
-  score: number | null;
 }
 
-function formatScore(score: number): string {
-  return `${Math.round(score * 100)}%`;
-}
-
-export function CitationCard({ document: filename, page, score }: CitationCardProps) {
+export function CitationCard({ document: filename, page }: CitationCardProps) {
   return (
-    <div className="flex items-start gap-2 rounded-md border border-gray-200 bg-gray-50 px-3 py-2">
+    <div className="flex items-center gap-2.5 rounded-lg border border-surface-200 bg-surface-50 px-3 py-2 transition-colors hover:border-surface-300 hover:bg-surface-100/60">
       <svg
-        className="mt-0.5 h-4 w-4 flex-shrink-0 text-gray-400"
+        className="h-4 w-4 flex-shrink-0 text-surface-400"
         fill="none"
         viewBox="0 0 24 24"
         stroke="currentColor"
-        strokeWidth={2}
+        strokeWidth={1.75}
         aria-hidden="true"
       >
         <path
           strokeLinecap="round"
           strokeLinejoin="round"
-          d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+          d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9-9 0 00-9-9z"
         />
       </svg>
 
       <div className="min-w-0 flex-1">
-        <p className="truncate text-xs font-medium text-gray-700" title={filename}>
+        <p
+          className="truncate text-xs font-medium text-surface-700"
+          title={filename}
+        >
           {filename}
         </p>
-        <div className="mt-0.5 flex flex-wrap gap-x-2 text-xs text-gray-400">
-          {page != null && <span>p.{page}</span>}
-          {score != null && <span>{formatScore(score)}</span>}
-        </div>
+        {page != null && (
+          <p className="mt-0.5 text-xs text-surface-400">Page {page}</p>
+        )}
       </div>
     </div>
   );

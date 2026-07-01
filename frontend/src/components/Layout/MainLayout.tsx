@@ -8,13 +8,13 @@ interface MainLayoutProps {
 
 export function MainLayout({ sidebar, children }: MainLayoutProps) {
   return (
-    <div className="flex h-screen flex-col">
+    <div className="flex h-screen flex-col overflow-hidden bg-surface-50">
       <Header />
 
       <div className="flex flex-1 flex-col overflow-hidden lg:flex-row">
         {sidebar}
 
-        <main className="flex flex-1 flex-col overflow-hidden bg-gray-50">
+        <main className="flex flex-1 flex-col overflow-hidden bg-surface-50">
           {children}
         </main>
       </div>

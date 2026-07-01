@@ -56,14 +56,28 @@ export function Sidebar() {
   }
 
   return (
-    <aside className="flex w-full flex-shrink-0 flex-col overflow-hidden border-b border-gray-200 bg-white md:w-56 lg:w-72 lg:border-b-0 lg:border-r xl:w-80">
-      <div className="border-b border-gray-200 px-4 py-3">
-        <h2 className="text-base font-semibold text-gray-900">
-          Document Q&A
+    <aside className="flex w-full flex-shrink-0 flex-col overflow-hidden border-b border-surface-200 bg-white md:w-60 lg:w-72 lg:border-b-0 lg:border-r xl:w-80">
+      <div className="flex items-center gap-2 border-b border-surface-200 px-4 py-3 lg:px-5">
+        <svg
+          className="h-4 w-4 text-surface-500"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+          strokeWidth={2}
+          aria-hidden="true"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            d="M3.75 9.776c.112-.017.227-.026.344-.026h15.812c.117 0 .232.009.344.026m-16.5 0a2.25 2.25 0 00-1.883 2.542l.857 6a2.25 2.25 0 002.227 1.932H19.05a2.25 2.25 0 002.227-1.932l.857-6a2.25 2.25 0 00-1.883-2.542m-16.5 0V6A2.25 2.25 0 016 3.75h3.879a1.5 1.5 0 011.06.44l2.122 2.12a1.5 1.5 0 001.06.44H18A2.25 2.25 0 0120.25 9v.776"
+          />
+        </svg>
+        <h2 className="text-sm font-semibold tracking-tight text-surface-800">
+          Documents
         </h2>
       </div>
 
-      <div className="flex-1 space-y-4 overflow-y-auto px-4 py-3">
+      <div className="flex-1 space-y-5 overflow-y-auto scrollbar-thin px-4 py-4 lg:px-5">
         <UploadCard onUpload={handleUpload} uploading={uploading} />
         <DocumentList
           documents={documents}

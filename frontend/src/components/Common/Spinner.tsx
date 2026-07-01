@@ -2,13 +2,6 @@ interface SpinnerProps {
   size?: "sm" | "md" | "lg";
 }
 
-/**
- * Spinner component.
- *
- * Renders an animated loading indicator.
- *
- * TODO: Remove animation if not desired — kept minimal per project constraints.
- */
 export function Spinner({ size = "md" }: SpinnerProps) {
   const sizes = {
     sm: "h-4 w-4",
@@ -18,9 +11,11 @@ export function Spinner({ size = "md" }: SpinnerProps) {
 
   return (
     <svg
-      className={`animate-spin text-blue-600 ${sizes[size]}`}
+      className={`animate-spin text-accent-600 ${sizes[size]}`}
       fill="none"
       viewBox="0 0 24 24"
+      role="status"
+      aria-label="Loading"
     >
       <circle
         className="opacity-25"
