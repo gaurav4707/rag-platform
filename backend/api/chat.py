@@ -1,4 +1,7 @@
+import json
+
 from fastapi import APIRouter
+from fastapi.responses import StreamingResponse
 
 from models.schemas import ChatRequest, ChatResponse, SourceItem
 from services.rag_service import RAGService
@@ -45,3 +48,37 @@ def _build_sources(query: str) -> list[SourceItem]:
             )
         )
     return sources
+
+
+@router.post("/chat/stream")
+def chat_stream(request: ChatRequest):
+    return StreamingResponse(
+        _stream_events(request.message),
+        media_type="text/event-stream",
+    )
+
+
+def _stream_events(message: str):
+    stream = rag_service.stream_answer(message)
+    tool_calls: list[dict] = []
+
+    for kind, item in stream.interleave("messages", "tool_calls"):
+        if kind == "messages":
+            for token in item.text:
+                yield f"data: {json.dumps({'token': token})}\n\n"
+        elif kind == "tool_calls":
+            tool_calls.append(
+                {
+                    "tool_name": item.tool_name,
+                    "input": item.input,
+                    "output": item.output,
+                }
+            )
+
+    sources = _build_sources(message)
+    final = {
+        "done": True,
+        "sources": [s.model_dump() for s in sources],
+        "tool_calls": tool_calls,
+    }
+    yield f"data: {json.dumps(final)}\n\n"

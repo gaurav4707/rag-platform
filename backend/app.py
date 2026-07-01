@@ -11,7 +11,7 @@ from api.upload import router as upload_router
 from api.documents import router as documents_router
 from api.errors import AppError, app_error_handler, http_error_handler
 from rag.vector_store import _get_collection
-
+from fastapi.middleware.cors import CORSMiddleware
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -20,6 +20,15 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="RAG Platform", lifespan=lifespan)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:5173",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 app.add_exception_handler(AppError, cast(ExceptionHandler, app_error_handler))
 app.add_exception_handler(HTTPException, cast(ExceptionHandler, http_error_handler))
