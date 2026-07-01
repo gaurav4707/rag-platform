@@ -8,10 +8,10 @@ This document tracks the implementation status of the project.
 
 It is the single source of truth for:
 
-* Current work
-* Upcoming tasks
-* Completed milestones
-* Future enhancements
+- Current work
+- Upcoming tasks
+- Completed milestones
+- Future enhancements
 
 Unlike `PROJECT_PLAN.md`, which defines **what** the project aims to become, this document tracks **what is actively being built**.
 
@@ -33,8 +33,8 @@ Planning & Architecture
 
 # Milestone Overview
 
-| Milestone                 | Status        |
-| ------------------------- | ------------- |
+| Milestone                 | Status         |
+| ------------------------- | -------------- |
 | 1. Backend Foundation     | ⏳ Not Started |
 | 2. React Frontend         | ⏳ Not Started |
 | 3. Retrieval Improvements | ⏳ Not Started |
@@ -54,96 +54,96 @@ Build a clean, modular backend that exposes a stable API.
 
 ### Project Structure
 
-* [ ] Create project directory structure
-* [ ] Create backend package
-* [ ] Create frontend package
-* [ ] Create documentation folder
-* [ ] Configure environment variables
+- [x] Create project directory structure
+- [x] Create backend package
+- [x] Create frontend package
+- [x] Create documentation folder
+- [x] Configure environment variables
 
 ---
 
 ### FastAPI
 
-* [ ] Initialize FastAPI
-* [ ] Configure application entry point
-* [ ] Configure routing
-* [ ] Add health endpoint
+- [x] Initialize FastAPI
+- [x] Configure application entry point
+- [x] Configure routing
+- [x] Add health endpoint
 
 ---
 
 ### PDF Upload
 
-* [ ] Upload endpoint
-* [ ] Validate PDF files
-* [ ] Save uploaded PDFs
-* [ ] Generate document IDs
+- [x] Upload endpoint
+- [x] Validate PDF files
+- [x] Save uploaded PDFs
+- [x] Generate document IDs
 
 ---
 
 ### Loader
 
-* [ ] Read PDF
-* [ ] Extract text
-* [ ] Preserve metadata
+- [x] Read PDF
+- [x] Extract text
+- [x] Preserve metadata
 
 ---
 
 ### Splitter
 
-* [ ] Configure RecursiveCharacterTextSplitter
-* [ ] Chunk documents
-* [ ] Preserve chunk metadata
+- [x] Configure RecursiveCharacterTextSplitter
+- [x] Chunk documents
+- [x] Preserve chunk metadata
 
 ---
 
 ### Embeddings
 
-* [ ] Initialize embedding model
-* [ ] Generate embeddings
-* [ ] Handle embedding failures
+- [x] Initialize embedding model
+- [x] Generate embeddings
+- [x] Handle embedding failures
 
 ---
 
 ### Vector Store
 
-* [ ] Initialize ChromaDB
-* [ ] Store embeddings
-* [ ] Delete embeddings
-* [ ] Similarity search
+- [x] Initialize ChromaDB
+- [x] Store embeddings
+- [x] Delete embeddings
+- [x] Similarity search
 
 ---
 
 ### Retrieval
 
-* [ ] Retrieve relevant chunks
-* [ ] Remove duplicate chunks
-* [ ] Return retrieval metadata
+- [x] Retrieve relevant chunks
+- [x] Remove duplicate chunks
+- [x] Return retrieval metadata
 
 ---
 
 ### Prompt Builder
 
-* [ ] Create system prompt
-* [ ] Inject retrieved context
-* [ ] Prevent prompt injection from retrieved documents
+- [x] Create system prompt
+- [x] Inject retrieved context
+- [x] Prevent prompt injection from retrieved documents
 
 ---
 
 ### Agent
 
-* [ ] Initialize LLM
-* [ ] Stream responses
-* [ ] Return citations
+- [x] Initialize LLM
+- [x] Stream responses
+- [x] Return citations
 
 ---
 
 ### APIs
 
-* [ ] Upload API
-* [ ] Chat API
-* [ ] Streaming Chat API
-* [ ] List Documents API
-* [ ] Delete Document API
+- [x] Upload API
+- [x] Chat API
+- [x] Streaming Chat API
+- [x] List Documents API
+- [x] Delete Document API
 
 ---
 
@@ -151,12 +151,12 @@ Build a clean, modular backend that exposes a stable API.
 
 Milestone 1 is complete when:
 
-* PDFs can be uploaded.
-* PDFs are indexed.
-* Questions can be answered.
-* Responses are streamed.
-* Sources are returned.
-* APIs match `API_SPEC.md`.
+- PDFs can be uploaded.
+- PDFs are indexed.
+- Questions can be answered.
+- Responses are streamed.
+- Sources are returned.
+- APIs match `API_SPEC.md`.
 
 ---
 
@@ -170,40 +170,40 @@ Build a clean, responsive frontend.
 
 ### Project Setup
 
-* [ ] Initialize React
-* [ ] Configure TypeScript
-* [ ] Configure Tailwind CSS
-* [ ] Configure routing
+- [ ] Initialize React
+- [ ] Configure TypeScript
+- [ ] Configure Tailwind CSS
+- [ ] Configure routing
 
 ---
 
 ### Pages
 
-* [ ] Home
-* [ ] Chat
-* [ ] Documents
+- [ ] Home
+- [ ] Chat
+- [ ] Documents
 
 ---
 
 ### Components
 
-* [ ] Navigation
-* [ ] Upload component
-* [ ] Chat window
-* [ ] Message bubble
-* [ ] Source card
-* [ ] Loading indicator
+- [ ] Navigation
+- [ ] Upload component
+- [ ] Chat window
+- [ ] Message bubble
+- [ ] Source card
+- [ ] Loading indicator
 
 ---
 
 ### Features
 
-* [ ] Upload PDFs
-* [ ] List documents
-* [ ] Delete documents
-* [ ] Chat
-* [ ] Stream responses
-* [ ] Render Markdown
+- [ ] Upload PDFs
+- [ ] List documents
+- [ ] Delete documents
+- [ ] Chat
+- [ ] Stream responses
+- [ ] Render Markdown
 
 ---
 
@@ -217,11 +217,11 @@ Frontend communicates successfully with backend and supports the MVP workflow.
 
 ## Planned Tasks
 
-* [ ] Better chunk selection
-* [ ] MMR retrieval
-* [ ] Query rewriting
-* [ ] Retrieval evaluation
-* [ ] Improved citations
+- [ ] Better chunk selection
+- [ ] MMR retrieval
+- [ ] Query rewriting
+- [ ] Retrieval evaluation
+- [ ] Improved citations
 
 ---
 
@@ -229,11 +229,11 @@ Frontend communicates successfully with backend and supports the MVP workflow.
 
 ## Planned Tasks
 
-* [ ] SQLite database
-* [ ] Conversation model
-* [ ] Message model
-* [ ] Persistent chat history
-* [ ] Conversation management
+- [ ] SQLite database
+- [ ] Conversation model
+- [ ] Message model
+- [ ] Persistent chat history
+- [ ] Conversation management
 
 ---
 
@@ -241,13 +241,13 @@ Frontend communicates successfully with backend and supports the MVP workflow.
 
 ## Planned Tasks
 
-* [ ] Drag & drop upload
-* [ ] Better loading states
-* [ ] Error handling
-* [ ] Settings page
-* [ ] Dark mode
-* [ ] Retrieval inspection panel
-* [ ] Better source display
+- [ ] Drag & drop upload
+- [ ] Better loading states
+- [ ] Error handling
+- [ ] Settings page
+- [ ] Dark mode
+- [ ] Retrieval inspection panel
+- [ ] Better source display
 
 ---
 
@@ -257,42 +257,42 @@ Frontend communicates successfully with backend and supports the MVP workflow.
 
 ### Retrieval
 
-* [ ] Hybrid Search
-* [ ] Metadata filtering
-* [ ] Parent Document Retriever
-* [ ] Context compression
+- [ ] Hybrid Search
+- [ ] Metadata filtering
+- [ ] Parent Document Retriever
+- [ ] Context compression
 
 ---
 
 ### Ranking
 
-* [ ] Cross-encoder reranker
-* [ ] Score threshold filtering
+- [ ] Cross-encoder reranker
+- [ ] Score threshold filtering
 
 ---
 
 ### Providers
 
-* [ ] Multiple LLM providers
-* [ ] Multiple embedding providers
-* [ ] Multiple vector databases
+- [ ] Multiple LLM providers
+- [ ] Multiple embedding providers
+- [ ] Multiple vector databases
 
 ---
 
 ### Documents
 
-* [ ] Multi-format support
-* [ ] DOCX
-* [ ] TXT
-* [ ] Markdown
+- [ ] Multi-format support
+- [ ] DOCX
+- [ ] TXT
+- [ ] Markdown
 
 ---
 
 ### Intelligence
 
-* [ ] Suggested questions
-* [ ] Automatic document summaries
-* [ ] Confidence indicators
+- [ ] Suggested questions
+- [ ] Automatic document summaries
+- [ ] Confidence indicators
 
 ---
 
@@ -300,19 +300,19 @@ Frontend communicates successfully with backend and supports the MVP workflow.
 
 Ideas that are intentionally postponed.
 
-* [ ] OCR
-* [ ] Image extraction
-* [ ] Table extraction
-* [ ] Multi-modal RAG
-* [ ] Web search integration
-* [ ] Graph RAG
-* [ ] Authentication
-* [ ] Multi-user support
-* [ ] Cloud deployment
-* [ ] Docker support
-* [ ] CI/CD
-* [ ] Unit tests
-* [ ] Integration tests
+- [ ] OCR
+- [ ] Image extraction
+- [ ] Table extraction
+- [ ] Multi-modal RAG
+- [ ] Web search integration
+- [ ] Graph RAG
+- [ ] Authentication
+- [ ] Multi-user support
+- [ ] Cloud deployment
+- [ ] Docker support
+- [ ] CI/CD
+- [ ] Unit tests
+- [ ] Integration tests
 
 ---
 
@@ -335,11 +335,11 @@ Do **not** start frontend development until the backend architecture is stable.
 
 A task is considered complete only if:
 
-* The implementation works.
-* Code follows the documented architecture.
-* Existing functionality is not broken.
-* Relevant documentation is updated if needed.
-* Manual testing has been performed.
+- The implementation works.
+- Code follows the documented architecture.
+- Existing functionality is not broken.
+- Relevant documentation is updated if needed.
+- Manual testing has been performed.
 
 ---
 
@@ -349,14 +349,14 @@ This document should always reflect the current state of the project.
 
 When work starts:
 
-* Move tasks into the current milestone if needed.
+- Move tasks into the current milestone if needed.
 
 When work finishes:
 
-* Mark tasks as completed.
+- Mark tasks as completed.
 
 When priorities change:
 
-* Update this document before implementing new work.
+- Update this document before implementing new work.
 
 This roadmap should remain synchronized with the codebase throughout the life of the project.
