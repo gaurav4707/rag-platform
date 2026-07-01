@@ -36,12 +36,6 @@ env/
 # Backend storage
 # ----------------------------
 
-# Uploaded PDFs (optional)
-backend/storage/uploads/
-
-# Chroma vector database
-backend/storage/chroma/
-
 # Logs
 *.log
 
@@ -69,4 +63,4 @@ pnpm-debug.log*
 *.swo
 
 backend/storage/uploads/
-backend/storage/chroma/
+backend/storage/chroma_langchain_db
