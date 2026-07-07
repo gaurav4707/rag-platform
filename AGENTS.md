@@ -3,40 +3,48 @@
 > **Quick Reference** — repo-specific facts most likely to trip up a new agent. Full project instructions follow below.
 
 ## Status
+
 - **Phase:** Planning & Architecture (per `docs/TODO.md`). Milestone 1 (Backend) is **not started**.
 - Architecture docs (`ARCHITECTURE.md`, `API_SPEC.md`) describe a **planned** state. The current codebase is simpler and has **drifted** from the docs.
 
 ## Quick Start
+
 ```sh
 source venv/bin/activate && python backend/app.py
 ```
+
 Requires `GOOGLE_API_KEY` in the environment (Gemini models for embeddings + LLM).
 
 ## Known Defects (fix before building on top)
+
 - `backend/rag/embeddings.py:5` — string literal is broken (`"EMBEDDING_MODEL` instead of `EMBEDDING_MODEL`)
 - `backend/rag/vector_store.py:10` — `CHROMA_DB_DIR` is imported twice on the same line
 
 ## Architecture Drift (current vs planned docs)
-| Area | Docs say | Actually is |
-|---|---|---|
-| Entry point | FastAPI app | `backend/app.py` — CLI script using langchain directly |
-| API layer | `backend/api/` dir | Does not exist |
-| Models layer | `backend/models/` dir | Does not exist |
-| Utils layer | `backend/utils/` dir | Does not exist |
-| Frontend | React app | Does not exist |
-| Service layer | `document_service.py`, `chat_service.py` | Only `rag_service.py` (stub) |
+
+| Area          | Docs say                                 | Actually is                                            |
+| ------------- | ---------------------------------------- | ------------------------------------------------------ |
+| Entry point   | FastAPI app                              | `backend/app.py` — CLI script using langchain directly |
+| API layer     | `backend/api/` dir                       | Does not exist                                         |
+| Models layer  | `backend/models/` dir                    | Does not exist                                         |
+| Utils layer   | `backend/utils/` dir                     | Does not exist                                         |
+| Frontend      | React app                                | Does not exist                                         |
+| Service layer | `document_service.py`, `chat_service.py` | Only `rag_service.py` (stub)                           |
 
 ## Must-Read Before Changes
+
 - `docs/ARCHITECTURE.md` — layered architecture, module responsibilities, dependency rules
 - `docs/DECISIONS.md` — ADRs explaining why key trade-offs were made
 - `docs/RAG_PIPELINE.md` — indexing + retrieval pipeline stages
 
 ## Tooling
+
 - **No linting, typechecking, formatting, or test infrastructure** is configured.
 - All verification is manual: run `backend/app.py` and inspect output.
 - Adding a linter/formatter/tester would be valuable.
 
 ## Conventions
+
 - RAG pipeline modules live in `backend/rag/` — each file has one responsibility.
 - Paths, model names, chunking params go in `backend/config.py` (never hardcoded elsewhere).
 - When the architecture changes, update the relevant `docs/` file.
@@ -58,10 +66,10 @@ This project is a local, single-user AI Document Assistant built for learning mo
 
 The application allows users to:
 
-* Upload PDF documents
-* Index them into a vector database
-* Ask questions about uploaded documents
-* Receive grounded answers with citations
+- Upload PDF documents
+- Index them into a vector database
+- Ask questions about uploaded documents
+- Receive grounded answers with citations
 
 The project prioritizes understanding over rapid feature development.
 
@@ -82,6 +90,7 @@ Do not optimize for writing the fewest lines of code.
 ---
 
 # 3. Architectural Rules
+
 Before making changes, read:
 
 1. PROJECT_PLAN.md
@@ -123,14 +132,14 @@ Do not duplicate logic.
 
 Before implementing a feature:
 
-* Understand the existing architecture.
-* Reuse existing modules whenever possible.
-* Extend the system instead of bypassing it.
+- Understand the existing architecture.
+- Reuse existing modules whenever possible.
+- Extend the system instead of bypassing it.
 
 If a feature requires architectural changes, update:
 
-* ARCHITECTURE.md
-* DECISIONS.md
+- ARCHITECTURE.md
+- DECISIONS.md
 
 before implementing.
 
@@ -140,14 +149,14 @@ before implementing.
 
 Agents may:
 
-* Add new modules
-* Refactor code
-* Improve readability
-* Fix bugs
-* Improve error handling
-* Improve documentation
-* Add tests
-* Add logging
+- Add new modules
+- Refactor code
+- Improve readability
+- Fix bugs
+- Improve error handling
+- Improve documentation
+- Add tests
+- Add logging
 
 provided the architecture remains consistent.
 
@@ -157,12 +166,12 @@ provided the architecture remains consistent.
 
 Do not modify without good reason:
 
-* Folder structure
-* Public API contracts
-* Service boundaries
-* RAG pipeline
-* Data flow
-* Storage layout
+- Folder structure
+- Public API contracts
+- Service boundaries
+- RAG pipeline
+- Data flow
+- Storage layout
 
 If modifications are necessary, explain why.
 
@@ -172,10 +181,10 @@ If modifications are necessary, explain why.
 
 Use:
 
-* Type hints
-* Small functions
-* Docstrings for public functions
-* Meaningful names
+- Type hints
+- Small functions
+- Docstrings for public functions
+- Meaningful names
 
 Prefer early returns over deeply nested conditionals.
 
@@ -205,10 +214,10 @@ Before adding a new dependency:
 
 Ask:
 
-* Can the standard library solve this?
-* Does an existing dependency already provide this?
-* Is this dependency actively maintained?
-* Is it necessary?
+- Can the standard library solve this?
+- Does an existing dependency already provide this?
+- Is this dependency actively maintained?
+- Is it necessary?
 
 Prefer fewer dependencies.
 
@@ -218,13 +227,13 @@ Prefer fewer dependencies.
 
 Backend responsibilities include:
 
-* File upload
-* PDF processing
-* Chunking
-* Embeddings
-* Retrieval
-* Prompt construction
-* LLM interaction
+- File upload
+- PDF processing
+- Chunking
+- Embeddings
+- Retrieval
+- Prompt construction
+- LLM interaction
 
 The backend should expose clean APIs.
 
@@ -236,11 +245,11 @@ Do not mix UI logic into backend modules.
 
 Frontend responsibilities include:
 
-* Rendering UI
-* Uploading files
-* Displaying chats
-* Rendering markdown
-* Displaying citations
+- Rendering UI
+- Uploading files
+- Displaying chats
+- Rendering markdown
+- Displaying citations
 
 Do not perform retrieval or LLM logic in the frontend.
 
@@ -292,25 +301,25 @@ Whenever architecture changes:
 
 Update:
 
-* ARCHITECTURE.md
+- ARCHITECTURE.md
 
 Whenever project scope changes:
 
 Update:
 
-* PROJECT_PLAN.md
+- PROJECT_PLAN.md
 
 Whenever important technical decisions are made:
 
 Update:
 
-* DECISIONS.md
+- DECISIONS.md
 
 Whenever new work is identified:
 
 Update:
 
-* TODO.md
+- TODO.md
 
 Documentation should remain synchronized with the codebase.
 
@@ -322,10 +331,10 @@ New functionality should be manually verified before considering it complete.
 
 When practical:
 
-* Test edge cases.
-* Test invalid input.
-* Test empty documents.
-* Test large documents.
+- Test edge cases.
+- Test invalid input.
+- Test empty documents.
+- Test large documents.
 
 Avoid introducing regressions.
 
@@ -343,6 +352,15 @@ Avoid premature optimization.
 
 Do not implement speculative features.
 
+Every module should have one primary responsibility.
+
+When adding a feature:
+
+- Extend the responsible module.
+- Do not duplicate logic.
+- Prefer introducing a new focused module over expanding an unrelated one.
+- Avoid creating hidden dependencies between modules.
+
 ---
 
 # 17. Project Philosophy
@@ -354,3 +372,52 @@ Prefer solutions that improve understanding, even if they require slightly more 
 Frameworks should be used intentionally.
 
 The project should remain easy for both humans and AI coding agents to understand and extend.
+
+## Retrieval Architecture Rules
+
+Retrieval is a first-class capability of the platform.
+
+Exactly one retrieval operation must occur for each user request.
+
+The retriever produces a reusable `RetrievalResult` that becomes the single source of truth for downstream components.
+
+The `RetrievalResult` is shared by:
+
+- Prompt Builder
+- Citation Builder
+- Agent
+- Future reranking and retrieval modules
+
+No downstream component should perform an additional vector store query for the same request.
+
+Future retrieval improvements (hybrid search, metadata filtering, query rewriting, reranking, MMR, etc.) should operate on the existing `RetrievalResult` rather than triggering another retrieval.
+
+## Internal Domain Models
+
+Keep internal workflow models separate from public API schemas.
+
+Public API models belong in:
+
+backend/models/schemas.py
+
+Internal RAG models belong in:
+
+backend/models/rag_models.py
+
+Examples include:
+
+- RetrievedChunk
+- RetrievalResult
+- ChatResult
+
+Internal models may evolve without affecting the external API contract.
+
+## Architecture Invariants
+
+The following rules should never be violated.
+
+1. Retrieval happens exactly once per request.
+2. The RetrievalResult is the single source of truth for downstream components.
+3. API schemas must remain independent from internal RAG models.
+4. Business logic belongs in the Service layer.
+5. The Agent orchestrates tools but does not implement business logic.
