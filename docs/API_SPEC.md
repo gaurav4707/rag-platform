@@ -1,20 +1,23 @@
 # API_SPEC.md
 
-# Backend API Specification
+# API Specification
 
-## 1. Purpose
+## Purpose
 
-This document defines the public API contract between the frontend and the backend.
+This document defines the public HTTP API exposed by the backend.
 
-It specifies:
+The API acts as the contract between the frontend and the backend.
 
-* Available endpoints
-* Request formats
-* Response formats
-* Streaming behavior
-* Error responses
+The frontend should remain completely unaware of the internal implementation, whether the backend uses:
 
-The frontend should interact only with these APIs and should not depend on backend implementation details.
+- Traditional RAG
+- Agentic RAG
+- Different LLM providers
+- Different vector databases
+
+Only the API contract defined in this document is considered stable.
+
+Internal implementation details may change without affecting the frontend.
 
 ---
 
@@ -198,6 +201,9 @@ Remove a document and its associated vectors.
 1. Removes all vector entries for the `document_id` from ChromaDB.
 2. Removes the stored PDF from `storage/uploads/`.
 3. Returns 404 if the document does not exist.
+Document management endpoints are intentionally separate from the Agent.
+
+Although future versions of the Agent may invoke document management tools internally, the frontend should continue using these dedicated REST endpoints for CRUD operations.
 
 ---
 
@@ -218,19 +224,26 @@ Ask a question about uploaded documents.
 ```
 
 ### Response (200)
+### tool_calls
+
+Optional metadata describing the tools invoked by the Agent while answering the request.
+
+This field is primarily intended for debugging, development, and future observability.
+
+The frontend should not depend on its contents for normal application behavior.
+
+Example
 
 ```json
-{
-    "answer": "ReAct is a framework that combines reasoning and acting...",
-    "sources": [
-        {
-            "document": "research.pdf",
-            "page": 7,
-            "document_id": "uuid-string",
-            "score": 0.4521
-        }
-    ]
-}
+[
+  {
+    "tool_name": "retrieve_context",
+    "input": {
+      "query": "What is RAG?"
+    },
+    "output": "Retrieved 4 relevant chunks"
+  }
+]
 ```
 
 ### Fields
@@ -456,3 +469,13 @@ The API should:
 * Remain backward compatible whenever possible.
 
 The frontend should never need to know whether the backend uses Chroma, FAISS, Gemini, OpenAI, or any other provider.
+
+# Agent Compatibility
+
+The backend currently exposes a stable HTTP API while using an internal Agentic RAG architecture.
+
+Future versions of the backend may introduce additional tools, planning strategies, or reasoning capabilities.
+
+These internal changes should not require changes to the frontend as long as the API contract remains unchanged.
+
+This separation allows the backend to evolve independently from the user interface.

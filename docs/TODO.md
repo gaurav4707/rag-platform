@@ -6,14 +6,9 @@
 
 This document tracks the implementation status of the project.
 
-It is the single source of truth for:
+Unlike `PROJECT_PLAN.md`, which describes the long-term vision, this document reflects the current implementation state and active development priorities.
 
-- Current work
-- Upcoming tasks
-- Completed milestones
-- Future enhancements
-
-Unlike `PROJECT_PLAN.md`, which defines **what** the project aims to become, this document tracks **what is actively being built**.
+It should always remain synchronized with the codebase.
 
 ---
 
@@ -21,295 +16,263 @@ Unlike `PROJECT_PLAN.md`, which defines **what** the project aims to become, thi
 
 **Current Phase**
 
-Planning & Architecture
+Milestone 3 — Retrieval Intelligence
 
 **Overall Progress**
 
 ```text
-████████░░░░░░░░░░░░ 20%
+██████████████░░░░░░ 70%
 ```
 
 ---
 
 # Milestone Overview
 
-| Milestone                 | Status         |
-| ------------------------- | -------------- |
-| 1. Backend Foundation     | ⏳ Not Started |
-| 2. React Frontend         | ⏳ Not Started |
-| 3. Retrieval Improvements | ⏳ Not Started |
-| 4. Conversation Memory    | ⏳ Not Started |
-| 5. UI & UX Improvements   | ⏳ Not Started |
-| 6. Advanced RAG           | ⏳ Not Started |
+| Milestone | Status |
+|-----------|--------|
+| 1. Backend Foundation | ✅ Completed |
+| 2. Frontend Foundation | ✅ Completed |
+| 3. Retrieval Intelligence | 🚧 In Progress |
+| 4. Agent Foundations | ⏳ Planned |
+| 5. User Experience | ⏳ Planned |
+| 6. Advanced Agentic RAG | ⏳ Planned |
 
 ---
 
-# Milestone 1 — Backend Foundation
+# Milestone 1 — Backend Foundation ✅
 
-**Goal**
+## Completed
 
-Build a clean, modular backend that exposes a stable API.
+### Project
 
-## Tasks
-
-### Project Structure
-
-- [x] Create project directory structure
-- [x] Create backend package
-- [x] Create frontend package
-- [x] Create documentation folder
-- [x] Configure environment variables
-
----
+- [x] Backend architecture
+- [x] Configuration
+- [x] Documentation
 
 ### FastAPI
 
-- [x] Initialize FastAPI
-- [x] Configure application entry point
-- [x] Configure routing
-- [x] Add health endpoint
+- [x] Application setup
+- [x] Routing
+- [x] Health endpoint
+- [x] Error handling
 
----
+### Document Processing
 
-### PDF Upload
-
-- [x] Upload endpoint
-- [x] Validate PDF files
-- [x] Save uploaded PDFs
-- [x] Generate document IDs
-
----
-
-### Loader
-
-- [x] Read PDF
-- [x] Extract text
-- [x] Preserve metadata
-
----
-
-### Splitter
-
-- [x] Configure RecursiveCharacterTextSplitter
-- [x] Chunk documents
-- [x] Preserve chunk metadata
-
----
-
-### Embeddings
-
-- [x] Initialize embedding model
-- [x] Generate embeddings
-- [x] Handle embedding failures
-
----
+- [x] PDF upload
+- [x] Validation
+- [x] PDF storage
+- [x] Loader
+- [x] Metadata enrichment
+- [x] Chunking
+- [x] Embeddings
 
 ### Vector Store
 
-- [x] Initialize ChromaDB
-- [x] Store embeddings
-- [x] Delete embeddings
+- [x] ChromaDB integration
+- [x] Persistent storage
 - [x] Similarity search
+- [x] Delete documents
+- [x] List documents
 
----
+### Chat
 
-### Retrieval
-
-- [x] Retrieve relevant chunks
-- [x] Remove duplicate chunks
-- [x] Return retrieval metadata
-
----
-
-### Prompt Builder
-
-- [x] Create system prompt
-- [x] Inject retrieved context
-- [x] Prevent prompt injection from retrieved documents
-
----
-
-### Agent
-
-- [x] Initialize LLM
-- [x] Stream responses
-- [x] Return citations
-
----
+- [x] Chat endpoint
+- [x] Streaming endpoint
+- [x] Source citations
+- [x] Tool call metadata
 
 ### APIs
 
-- [x] Upload API
-- [x] Chat API
-- [x] Streaming Chat API
-- [x] List Documents API
-- [x] Delete Document API
+- [x] Upload
+- [x] Chat
+- [x] Streaming Chat
+- [x] List Documents
+- [x] Delete Documents
 
 ---
 
-### Completion Criteria
+# Milestone 2 — Frontend Foundation ✅
 
-Milestone 1 is complete when:
-
-- PDFs can be uploaded.
-- PDFs are indexed.
-- Questions can be answered.
-- Responses are streamed.
-- Sources are returned.
-- APIs match `API_SPEC.md`.
-
----
-
-# Milestone 2 — React Frontend
-
-**Goal**
-
-Build a clean, responsive frontend.
-
-## Tasks
+## Completed
 
 ### Project Setup
 
-- [ ] Initialize React
-- [ ] Configure TypeScript
-- [ ] Configure Tailwind CSS
-- [ ] Configure routing
+- [x] React
+- [x] TypeScript
+- [x] Vite
+- [x] Tailwind CSS
+
+### Layout
+
+- [x] Responsive layout
+- [x] Sidebar
+- [x] Header
+
+### Upload
+
+- [x] Drag-and-drop upload
+- [x] File validation
+- [x] Upload progress
+
+### Documents
+
+- [x] List documents
+- [x] Delete documents
+- [x] Loading states
+- [x] Error states
+
+### Chat
+
+- [x] Streaming chat
+- [x] Markdown rendering
+- [x] Auto-scroll
+- [x] Citation cards
+- [x] Streaming cursor
+- [x] Keyboard shortcuts
+
+### Accessibility
+
+- [x] Keyboard navigation
+- [x] ARIA labels
+- [x] Loading announcements
+- [x] Focus management
 
 ---
 
-### Pages
+# Milestone 3 — Retrieval Intelligence 🚧
 
-- [ ] Home
-- [ ] Chat
-- [ ] Documents
+## Goal
 
----
+Improve answer quality before expanding the Agent.
 
-### Components
-
-- [ ] Navigation
-- [ ] Upload component
-- [ ] Chat window
-- [ ] Message bubble
-- [ ] Source card
-- [ ] Loading indicator
-
----
-
-### Features
-
-- [ ] Upload PDFs
-- [ ] List documents
-- [ ] Delete documents
-- [ ] Chat
-- [ ] Stream responses
-- [ ] Render Markdown
-
----
-
-### Completion Criteria
-
-Frontend communicates successfully with backend and supports the MVP workflow.
-
----
-
-# Milestone 3 — Retrieval Improvements
-
-## Planned Tasks
-
-- [ ] Better chunk selection
-- [ ] MMR retrieval
-- [ ] Query rewriting
-- [ ] Retrieval evaluation
-- [ ] Improved citations
-
----
-
-# Milestone 4 — Conversation Memory
-
-## Planned Tasks
-
-- [ ] SQLite database
-- [ ] Conversation model
-- [ ] Message model
-- [ ] Persistent chat history
-- [ ] Conversation management
-
----
-
-# Milestone 5 — UI & UX Improvements
-
-## Planned Tasks
-
-- [ ] Drag & drop upload
-- [ ] Better loading states
-- [ ] Error handling
-- [ ] Settings page
-- [ ] Dark mode
-- [ ] Retrieval inspection panel
-- [ ] Better source display
-
----
-
-# Milestone 6 — Advanced RAG
-
-## Planned Tasks
+## In Progress
 
 ### Retrieval
 
 - [ ] Hybrid Search
+- [ ] Maximum Marginal Relevance (MMR)
 - [ ] Metadata filtering
-- [ ] Parent Document Retriever
-- [ ] Context compression
-
----
+- [ ] Query rewriting
+- [ ] Multi-query retrieval
 
 ### Ranking
 
-- [ ] Cross-encoder reranker
-- [ ] Score threshold filtering
+- [ ] Cross-encoder reranking
+- [ ] Score normalization
+- [ ] Score thresholding
+
+### Prompting
+
+- [ ] Prompt optimization
+- [ ] Context formatting
+- [ ] Better citation grounding
+
+### Evaluation
+
+- [ ] Retrieval benchmarking
+- [ ] Prompt evaluation
+- [ ] Retrieval inspection utilities
 
 ---
 
-### Providers
+# Milestone 4 — Agent Foundations
+
+## Goal
+
+Transform the current RAG pipeline into a robust Agentic RAG architecture.
+
+### Agent
+
+- [ ] Stable agent implementation
+- [ ] Provider-independent agent layer
+- [ ] Tool registry
+- [ ] Tool execution tracing
+- [ ] Streaming tool events
+
+### Initial Tools
+
+- [ ] retrieve_context
+
+### Additional Tools
+
+- [ ] list_documents
+- [ ] summarize_document
+- [ ] search_by_filename
+- [ ] search_by_metadata
+
+### Infrastructure
+
+- [ ] Conversation state
+- [ ] Agent observability
+- [ ] Debug logging
+
+---
+
+# Milestone 5 — User Experience
+
+### UI
+
+- [ ] Theme support
+- [ ] Settings page
+- [ ] Conversation management
+- [ ] Better loading states
+- [ ] Richer citation cards
+
+### Accessibility
+
+- [ ] Accessibility audit
+- [ ] Keyboard improvements
+- [ ] Screen reader improvements
+
+### Quality
+
+- [ ] Error recovery
+- [ ] Retry support
+- [ ] Better notifications
+
+---
+
+# Milestone 6 — Advanced Agentic RAG
+
+## Retrieval
+
+- [ ] Parent document retrieval
+- [ ] Context compression
+- [ ] Adaptive chunking
+
+## Agent
+
+- [ ] Reflection
+- [ ] Planning
+- [ ] Multi-step reasoning
+- [ ] Tool routing
+- [ ] Multiple simultaneous tools
+
+## Infrastructure
 
 - [ ] Multiple LLM providers
 - [ ] Multiple embedding providers
 - [ ] Multiple vector databases
-
----
-
-### Documents
-
-- [ ] Multi-format support
-- [ ] DOCX
-- [ ] TXT
-- [ ] Markdown
-
----
-
-### Intelligence
-
-- [ ] Suggested questions
-- [ ] Automatic document summaries
-- [ ] Confidence indicators
+- [ ] Conversation memory
+- [ ] OCR
+- [ ] Background indexing
+- [ ] Monitoring
 
 ---
 
 # Backlog
 
-Ideas that are intentionally postponed.
+Future ideas intentionally postponed.
 
-- [ ] OCR
+- [ ] Multi-modal RAG
 - [ ] Image extraction
 - [ ] Table extraction
-- [ ] Multi-modal RAG
-- [ ] Web search integration
 - [ ] Graph RAG
+- [ ] Web Search
 - [ ] Authentication
 - [ ] Multi-user support
 - [ ] Cloud deployment
-- [ ] Docker support
+- [ ] Docker
 - [ ] CI/CD
 - [ ] Unit tests
 - [ ] Integration tests
@@ -318,45 +281,42 @@ Ideas that are intentionally postponed.
 
 # Current Sprint
 
-Focus only on the following:
+Current focus:
 
-1. Refactor current backend into the planned architecture.
-2. Implement FastAPI.
-3. Build upload endpoint.
-4. Build chat endpoint.
-5. Build document management.
-6. Verify end-to-end RAG workflow.
-
-Do **not** start frontend development until the backend architecture is stable.
+1. Stabilize the Agent implementation.
+2. Improve retrieval quality.
+3. Eliminate duplicate retrieval for citations.
+4. Introduce provider-independent agent abstractions.
+5. Build the foundation for additional Agent tools.
 
 ---
 
 # Definition of Done
 
-A task is considered complete only if:
+A task is complete only when:
 
-- The implementation works.
-- Code follows the documented architecture.
-- Existing functionality is not broken.
-- Relevant documentation is updated if needed.
-- Manual testing has been performed.
+- [x] Functionality works correctly.
+- [x] Architecture rules are respected.
+- [x] Existing functionality remains unaffected.
+- [x] Documentation is updated if necessary.
+- [x] Manual testing has been completed.
 
 ---
 
 # Maintenance Rules
 
-This document should always reflect the current state of the project.
+Keep this document synchronized with the project.
 
-When work starts:
+When starting work:
 
-- Move tasks into the current milestone if needed.
+- Move tasks into the active milestone.
 
-When work finishes:
+When completing work:
 
-- Mark tasks as completed.
+- Mark tasks complete.
 
 When priorities change:
 
-- Update this document before implementing new work.
+- Update this roadmap before implementation.
 
-This roadmap should remain synchronized with the codebase throughout the life of the project.
+This document should always represent the current state of the project.

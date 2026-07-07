@@ -8,11 +8,21 @@ This document defines the overall architecture of the project.
 
 It explains:
 
-* Project structure
-* Responsibilities of each module
-* Data flow
-* Design rules
-* Architectural constraints
+- Project structure
+- Responsibilities of each module
+- Data flow
+- Design rules
+- Architectural constraints
+
+This project follows an **Agentic Retrieval-Augmented Generation (Agentic RAG)** architecture.
+
+The system is designed to be:
+
+- Modular
+- Provider-agnostic
+- Local-first
+- Single-user (MVP)
+- Easy to extend with additional tools and retrieval strategies
 
 Every future feature should follow this architecture unless an explicit architectural decision is recorded in `DECISIONS.md`.
 
@@ -31,24 +41,45 @@ Every future feature should follow this architecture unless an explicit architec
                     |      FastAPI API     |
                     +----------+-----------+
                                |
-                    Application Services
+                      Application Services
                                |
           +--------------------+--------------------+
-          |                    |                    |
-          |                    |                    |
-   Document Service      Chat Service      Document Service
-          |                    |                    |
+          |                                         |
+   Document Service                          Chat Service
+          |                                         |
           +--------------------+--------------------+
                                |
-                         RAG Engine
+                         Agentic RAG Engine
                                |
-      +------------+-----------+-----------+------------+
-      |            |           |           |            |
-  Loader      Splitter    Embeddings   Retriever   Prompt Builder
-                               |
-                          Vector Store
-                               |
-                           ChromaDB
+               +---------------+---------------+
+               |                               |
+            Agent                       Prompt Builder
+               |
+        Tool Selection
+               |
+    +----------+-----------+----------------+
+    |                      |                |
+Retriever Tool      Future Tools       Future Tools
+    |               (Web Search,       (Calculator,
+    |               Metadata, etc.)    Summarizer...)
+    |
+Retriever
+    |
+Vector Store
+    |
+    RetrievalResult
+    │
+    ├────────────► Prompt Builder
+    │
+    └────────────► Citation Builder
+    |
+Embeddings
+    |
+Splitter
+    |
+Loader
+    |
+Storage (PDFs)
 ```
 
 ---
@@ -58,48 +89,48 @@ Every future feature should follow this architecture unless an explicit architec
 ```
 project/
 
-│
 ├── backend/
-│   │
-│   ├── app.py
-│   ├── config.py
-│   │
-│   ├── api/
-│   │     ├── errors.py
-│   │     ├── chat.py
-│   │     ├── documents.py
-│   │     ├── health.py
-│   │     └── upload.py
-│   │
-│   ├── services/
-│   │     ├── document_service.py
-│   │     └── rag_service.py
-│   │
-│   ├── rag/
-│   │     ├── loader.py
-│   │     ├── splitter.py
-│   │     ├── embeddings.py
-│   │     ├── vector_store.py
-│   │     ├── retriever.py
-│   │     ├── prompts.py
-│   │     └── rag_agent.py
-│   │
-│   ├── models/
-│   │     └── schemas.py
-│   │
-│   ├── storage/
-│   │     ├── uploads/
-│   │     └── chroma_langchain_db/
-│   │
-│   └── utils/
 │
-├── frontend/
+├── app.py
+├── config.py
 │
-├── docs/
+├── api/
+│   ├── chat.py
+│   ├── documents.py
+│   ├── upload.py
+│   ├── health.py
+│   └── errors.py
 │
-├── README.md
+├── services/
+│   ├── document_service.py
+│   └── rag_service.py
 │
-└── AGENTS.md
+├── rag/
+│   ├── loader.py
+│   ├── splitter.py
+│   ├── embeddings.py
+│   ├── vector_store.py
+│   ├── retriever.py
+│   ├── prompts.py
+│   ├── tools.py
+│   └── agent.py
+│
+├── models/
+│   └── schemas.py
+│
+├── storage/
+│   ├── uploads/
+│   └── chroma_langchain_db/
+│
+└── utils/
+
+frontend/
+
+docs/
+
+README.md
+
+AGENTS.md
 ```
 
 ---
@@ -110,11 +141,11 @@ project/
 
 Responsible for:
 
-* User interface
-* File upload
-* Chat interface
-* Rendering streamed responses
-* Showing citations
+- User interface
+- File upload
+- Chat interface
+- Rendering streamed responses
+- Showing citations
 
 The frontend must never contain RAG logic.
 
@@ -124,13 +155,13 @@ The frontend must never contain RAG logic.
 
 Responsible for:
 
-* Receiving requests
-* Validating inputs
-* Returning responses
-* Streaming tokens
-* Standardized error responses (via `api/errors.py`)
+- Receiving requests
+- Validating inputs
+- Returning responses
+- Streaming tokens
+- Standardized error responses
 
-The API layer must not implement business logic.
+The API layer must remain thin.
 
 ---
 
@@ -138,12 +169,12 @@ The API layer must not implement business logic.
 
 Responsible for:
 
-* Coordinating application workflows
-* Calling RAG components
-* Managing document lifecycle (upload, list, delete)
-* Atomic cleanup on failure
+- Coordinating application workflows
+- Managing uploads
+- Managing document lifecycle
+- Orchestrating Agentic RAG execution
 
-This is the project's orchestration layer.
+No retrieval logic should live here.
 
 ---
 
@@ -151,14 +182,15 @@ This is the project's orchestration layer.
 
 Responsible for:
 
-* Loading documents
-* Chunking
-* Embeddings
-* Retrieval
-* Prompt construction
-* Agent execution
+- Loading
+- Chunking
+- Embeddings
+- Retrieval
+- Prompt construction
+- Tool definitions
+- Agent execution
 
-The RAG layer should never know about HTTP, React, or UI concerns.
+The RAG layer must never know about HTTP or React.
 
 ---
 
@@ -166,10 +198,12 @@ The RAG layer should never know about HTTP, React, or UI concerns.
 
 Responsible for:
 
-* Uploaded PDFs
-* Vector database (ChromaDB SQLite)
+- Uploaded PDFs
+- Persistent vector database
 
-Storage should not contain application logic.
+Storage contains data only.
+
+No business logic.
 
 ---
 
@@ -187,33 +221,26 @@ Upload API
 ↓
 
 Document Service
-  - Save PDF to storage/uploads/{document_id}.pdf
-  - Generate UUID document_id
-  - If any step fails: remove saved file + vector entries (atomic rollback)
 
 ↓
 
-Loader (PyPDFLoader)
+Loader
 
 ↓
 
-Splitter (RecursiveCharacterTextSplitter)
+Splitter
 
 ↓
 
 Metadata Enrichment
-  - document_id
-  - filename
-  - chunk_index
-  - page number (from loader)
 
 ↓
 
-Embeddings (HuggingFace BGE)
+Embeddings
 
 ↓
 
-ChromaDB (PersistentClient, auto-persisted to SQLite)
+Vector Store
 ```
 
 ---
@@ -226,7 +253,6 @@ User Question
 ↓
 
 Chat API
-  - Build sources from similarity search
 
 ↓
 
@@ -235,17 +261,53 @@ RAG Service
 ↓
 
 Agent
-  - Retrieves context via retriever tool
-  - Builds prompt via prompt_with_context middleware
-  - Generates answer via LLM
 
 ↓
 
-Chat Response
-  - answer (text)
-  - sources (filename, page, document_id, score)
-  - tool_calls (debug info)
+Chooses Tool
+
+↓
+
+Retriever Tool
+
+↓
+
+Retriever
+
+↓
+
+Vector Store
+
+↓
+
+RetrievalResult
+      │
+      ├────────────► Prompt Builder
+      │
+      ├────────────► Citation Builder
+      │
+      └────────────► Agent
+
+↓
+
+LLM
+
+↓
+
+ChatResult
+
+↓
+
+Streaming Response
 ```
+
+The Agent decides which tool(s) to invoke.
+
+For the MVP there is only one tool:
+
+- retrieve_context
+
+The architecture is intentionally designed so additional tools can be added without changing the API layer.
 
 ---
 
@@ -257,17 +319,14 @@ GET /documents
 ↓
 
 Document Service
-  list_indexed_documents()
 
 ↓
 
 Vector Store
-  Chroma.get() → unique document_ids from metadata
 
 ↓
 
 Response
-  [{document_id, filename, status}]
 ```
 
 ---
@@ -280,15 +339,18 @@ DELETE /documents/{document_id}
 ↓
 
 Document Service
-  delete_document(document_id)
-  - Check document exists → 404 if not
-  - Delete vectors from ChromaDB
-  - Delete PDF from storage/uploads/
+
+↓
+
+Vector Store
+
+↓
+
+Delete PDF
 
 ↓
 
 Response
-  {status: "deleted"}
 ```
 
 ---
@@ -297,25 +359,23 @@ Response
 
 ## loader.py
 
-Responsible only for reading PDF files.
+Reads PDF files.
 
-Must not perform chunking.
+Only responsible for document loading.
 
 ---
 
 ## splitter.py
 
-Responsible only for chunking documents.
-
-Must not generate embeddings.
+Splits documents into chunks.
 
 ---
 
 ## embeddings.py
 
-Responsible only for embedding generation.
+Generates embeddings.
 
-Must not interact with the UI.
+No retrieval logic.
 
 ---
 
@@ -325,53 +385,141 @@ Responsible only for vector database operations.
 
 Examples:
 
-* add documents
-* delete documents
-* similarity search
-* similarity search with scores
-* list unique documents from metadata
-
-Uses a cached singleton `Chroma` instance for connection reuse.
+- add_documents()
+- delete_documents()
+- similarity_search()
+- similarity_search_with_scores()
+- list_documents()
 
 ---
 
 ## retriever.py
 
-Responsible only for retrieving relevant chunks.
+Responsible only for retrieval.
 
-Returns both serialized content (for the LLM) and document objects (as artifact).
+It should:
+
+- query the vector store
+- rank retrieved chunks
+- preserve retrieval metadata
+- return a RetrievalResult
+
+It must never:
+
+- interact with the LLM
+- build prompts
+- build citations
+
+The RetrievalResult is the single source of truth for downstream components.
 
 ---
 
 ## prompts.py
 
-Responsible only for creating system prompts.
+Responsible only for prompt construction.
+
+Consumes:
+
+- user question
+- RetrievalResult
+
+Produces:
+
+- messages for the LLM
+
+The Prompt Builder never performs retrieval.
 
 ---
 
-## rag_agent.py
+## citations.py
 
-Responsible only for building the LangChain agent with tools and middleware.
+Responsible only for building API source citations.
+
+Consumes:
+
+- RetrievalResult
+
+Produces:
+
+- list[SourceItem]
+
+The Citation Builder never queries the vector store.
+
+It reuses the RetrievalResult produced earlier in the request.
+
+---
+
+## tools.py
+
+Defines all Agent tools.
+
+Current:
+
+- retrieve_context
+
+Future:
+
+- list_documents
+- summarize_document
+- search_by_filename
+- search_by_metadata
+- web_search
+- calculator
+
+Tool implementations should remain thin and delegate business logic to the appropriate modules.
+
+---
+
+## agent.py
+
+Responsible only for:
+
+- creating the LangChain agent
+- registering tools
+- coordinating tool execution
+- exposing a streaming interface
+
+The Agent:
+
+- selects tools
+- consumes RetrievalResult
+- streams model output
+
+The Agent must never query the vector store directly.
 
 ---
 
 ## api/errors.py
 
-Responsible for standardized error responses.
+Responsible for standardized API errors.
 
-Provides:
+---
 
-* `AppError` exception class with machine-readable error codes
-* Exception handlers for `AppError` and `HTTPException`
-* Error code constants (INVALID_FILE, DOCUMENT_NOT_FOUND, INDEXING_FAILED, VECTOR_STORE_ERROR, INTERNAL_SERVER_ERROR)
+## RetrievalResult
+
+The RetrievalResult is a shared data model produced by the retriever.
+
+It represents the outcome of a single retrieval operation and is reused throughout the request lifecycle.
+
+Consumers include:
+
+- Prompt Builder
+- Citation Builder
+- Agent
+
+This ensures that retrieval occurs exactly once per user request while maintaining consistent citations and reducing unnecessary vector store queries.
 
 ---
 
 # 7. Dependency Rules
 
-Allowed:
+Allowed
 
 ```
+Frontend
+
+↓
+
 API
 
 ↓
@@ -387,43 +535,41 @@ RAG
 Storage
 ```
 
-Not allowed:
+Inside the RAG layer
 
 ```
-Frontend
-
-↓
-
-RAG
-```
-
-or
-
-```
+Agent
+      │
+      ▼
+Tools
+      │
+      ▼
+Retriever
+      │
+      ▼
 Vector Store
-
-↓
-
-API
+      │
+      ▼
+RetrievalResult
+      │
+      ├────────► Prompt Builder
+      └────────► Citation Builder
 ```
 
-Dependencies should always point downward.
+Dependencies must always point downward.
 
 ---
 
 # 8. Design Principles
 
-Every module should have a single responsibility.
-
-Every file should have a clear purpose.
-
-Avoid global state whenever possible.
-
-Favor dependency injection over hidden dependencies.
-
-Prefer composition over inheritance.
-
-Prefer explicit behavior over implicit behavior.
+- Single Responsibility
+- Explicit data flow
+- Thin APIs
+- Modular RAG components
+- Provider agnostic
+- Tool-oriented architecture
+- Composition over inheritance
+- Clear separation between orchestration and implementation
 
 ---
 
@@ -431,14 +577,29 @@ Prefer explicit behavior over implicit behavior.
 
 The architecture should allow adding:
 
-* New embedding models
-* New LLM providers
-* New vector databases
-* OCR
-* Conversation memory
-* Hybrid retrieval
-* Metadata filtering
-* Reranking
+## Retrieval
+
+- Hybrid Search
+- Query Rewriting
+- MMR
+- Metadata Filtering
+- Reranking
+
+## Agent
+
+- Multiple tools
+- Tool routing
+- Multi-step reasoning
+- Reflection
+- Planning
+
+## Infrastructure
+
+- New LLM providers
+- New embedding models
+- New vector databases
+- OCR
+- Conversation memory
 
 without changing unrelated modules.
 
@@ -448,10 +609,15 @@ without changing unrelated modules.
 
 The following rules should not be violated without recording an architectural decision:
 
-* The frontend must never contain backend logic.
-* API endpoints must remain thin.
-* Business logic belongs in services.
-* RAG logic belongs in the RAG layer.
-* Storage must not contain application logic.
-* Every module should have one primary responsibility.
-* New features should extend the architecture rather than bypass it.
+- The frontend must never contain backend logic.
+- API endpoints must remain thin.
+- Business logic belongs in services.
+- Agent orchestration belongs inside the RAG layer.
+- Retrieval belongs inside retriever.py.
+- Tool definitions belong inside tools.py.
+- Prompt construction belongs inside prompts.py.
+- Storage must never contain business logic.
+- Every module should have one primary responsibility.
+- New capabilities should extend the architecture instead of bypassing it.
+- Exactly one retrieval operation should occur for each user request.
+- All downstream components must reuse the RetrievalResult instead of issuing additional vector store queries.

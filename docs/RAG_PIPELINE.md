@@ -1,493 +1,679 @@
 # RAG_PIPELINE.md
 
-# Retrieval-Augmented Generation (RAG) Pipeline
+# Agentic Retrieval-Augmented Generation (Agentic RAG) Pipeline
 
-## 1. Purpose
+# 1. Purpose
 
-This document describes how data flows through the Retrieval-Augmented Generation (RAG) system.
+This document describes the complete Agentic RAG execution pipeline.
 
-It serves as the technical reference for the core intelligence of the application.
+It explains how documents are indexed, how user queries are processed, how the Agent interacts with tools, and how responses are streamed back to the user.
 
-Any modifications to the retrieval pipeline should be documented here.
+This document serves as the technical reference for the application's intelligence layer.
 
 ---
 
 # 2. Pipeline Overview
 
-The application follows a two-phase architecture:
+The system consists of two independent pipelines.
 
-1. **Indexing Pipeline** (performed once when a PDF is uploaded)
-2. **Retrieval Pipeline** (performed every time the user asks a question)
+## Indexing Pipeline
 
-```text
-                 PDF Upload
-                      │
-                      ▼
-                Indexing Pipeline
-                      │
-                      ▼
-                 Chroma Vector DB
+Runs once whenever a PDF is uploaded.
 
-                      ▲
-                      │
-              Retrieval Pipeline
-                      ▲
-                      │
-                User Question
+```
+PDF
+
+↓
+
+Loader
+
+↓
+
+Metadata Enrichment
+
+↓
+
+Splitter
+
+↓
+
+Embeddings
+
+↓
+
+Vector Store
+```
+
+---
+
+## Agent Execution Pipeline
+
+Runs for every user question.
+
+```
+User Question
+
+↓
+
+Chat API
+
+↓
+
+RAG Service
+
+↓
+
+Agent
+
+↓
+
+Tool Selection
+
+↓
+
+Retriever Tool
+
+↓
+
+Retriever
+
+↓
+
+Vector Store
+
+↓
+
+RetrievalResult
+      │
+      ├────────────► Prompt Builder
+      │
+      └────────────► Citation Builder
+
+↓
+
+LLM
+
+↓
+
+Streaming Response
+
+↓
+
+ChatResult
+
+↓
+
+API Response
 ```
 
 ---
 
 # 3. Indexing Pipeline
 
-The indexing pipeline prepares documents for future retrieval.
+The indexing pipeline prepares uploaded documents for semantic retrieval.
 
-It runs once for every uploaded PDF.
+It executes exactly once for every uploaded PDF.
+
+---
 
 ## Step 1 — Upload PDF
 
-Input:
+Responsibilities
 
-```text
-research-paper.pdf
+- Validate PDF
+- Reject empty files
+- Generate UUID
+- Save original PDF
+
+Output
+
 ```
-
-The file is uploaded through the Upload API.
-
-The original PDF is saved to `storage/uploads/{document_id}.pdf`.
-
-Responsibilities:
-
-* Validate file type (PDF only)
-* Reject empty files
-* Generate UUID document ID
-* Save original file to disk
-
-Output:
-
-```text
-Stored PDF at storage/uploads/{document_id}.pdf
+storage/uploads/{document_id}.pdf
 ```
 
 ---
 
 ## Step 2 — Load Document
 
-Module:
+Module
 
-```text
+```
 loader.py
 ```
 
-Tool: `PyPDFLoader`
+Responsibilities
 
-Responsibilities:
+- Read PDF
+- Extract text
+- Preserve page metadata
 
-* Read PDF
-* Extract text per page
-* Preserve metadata (page number, source path)
+Output
 
-Output:
-
-```text
-List[Document] — one per page, with metadata.source and metadata.page
+```
+List[Document]
 ```
 
-The loader should not:
+The loader never performs:
 
-* Split text
-* Generate embeddings
-* Perform retrieval
+- chunking
+- embeddings
+- retrieval
 
 ---
 
 ## Step 3 — Enrich Metadata
 
-Before splitting, each Document's metadata is enriched with:
+Every page receives
 
-* `document_id` — UUID string, identifies the uploaded document
-* `filename` — original filename from the upload
+- document_id
+- filename
 
-This metadata is preserved through splitting and stored in ChromaDB alongside each chunk.
+Metadata is preserved throughout the pipeline.
 
 ---
 
 ## Step 4 — Split Document
 
-Module:
+Module
 
-```text
+```
 splitter.py
 ```
 
-Tool: `RecursiveCharacterTextSplitter`
+Responsibilities
 
-Parameters from `config.py`:
+- Split text
+- Preserve overlap
+- Preserve metadata
+- Assign chunk_index
 
-* `CHUNK_SIZE = 1000` characters
-* `CHUNK_OVERLAP = 200` characters
-* `add_start_index = True` — tracks position in original text
+Output
 
-Responsibilities:
-
-* Split document into chunks
-* Preserve overlap for context continuity
-* Preserve all metadata from parent document
-
-After splitting, each chunk additionally receives:
-
-* `chunk_index` — ordinal position within the document (0-based)
-
-Output:
-
-```text
-List[Document] — chunks with inherited metadata
+```
+List[Document]
 ```
 
 ---
 
 ## Step 5 — Generate Embeddings
 
-Module:
+Module
 
-```text
+```
 embeddings.py
 ```
 
-Model: `BAAI/bge-base-en-v1.5` via HuggingFaceEmbeddings
+Responsibilities
 
-Responsibilities:
+- Convert text into embedding vectors
 
-* Convert each chunk into a numerical vector (768 dimensions)
-
-The embedding module is provider-agnostic and can be replaced without affecting other components.
+The embedding provider should be replaceable without affecting the rest of the system.
 
 ---
 
 ## Step 6 — Store Vectors
 
-Module:
+Module
 
-```text
+```
 vector_store.py
 ```
 
-Database: ChromaDB (PersistentClient)
+Responsibilities
 
-Storage: `storage/chroma_langchain_db/chroma.sqlite3`
+- Store vectors
+- Store metadata
+- Store chunk text
 
-Responsibilities:
+Stored metadata includes
 
-* Store embeddings
-* Store chunk text (for retrieval)
-* Store metadata (document_id, filename, page, chunk_index)
-
-Each Chroma entry contains:
-
-| Field         | Source              |
-|---------------|---------------------|
-| `page_content`| Chunk text          |
-| `document_id` | From metadata       |
-| `filename`    | From metadata       |
-| `page`        | From PyPDFLoader    |
-| `chunk_index` | From splitter       |
-| `source`      | File path           |
-
-### Persistence
-
-ChromaDB's PersistentClient auto-persists all data to SQLite on every write operation. No explicit `persist()` call is needed.
-
-The `_collection` instance is cached as a module-level singleton to avoid creating multiple connections to the same database during the application lifecycle.
-
-### Atomic Rollback
-
-If any step in the indexing pipeline fails:
-
-1. The saved PDF file is removed from `storage/uploads/`
-2. Vector entries for that `document_id` are deleted from ChromaDB
-3. The error is propagated to the API layer
-
-This prevents orphaned files or ghost vectors.
+- document_id
+- filename
+- page
+- chunk_index
 
 ---
 
 ## Step 7 — Verify Indexing
 
-Output:
+Return
 
 ```json
 {
-  "document_id": "uuid-string",
-  "filename": "research.pdf",
+  "document_id": "...",
+  "filename": "...",
   "status": "indexed"
 }
 ```
 
 ---
 
-# 4. Retrieval Pipeline
+# 4. Agent Execution Pipeline
 
-The retrieval pipeline runs for every user question.
+This pipeline executes for every user question.
 
----
+Unlike traditional RAG, the LLM acts as an Agent capable of selecting tools.
 
-## Step 1 — User Question
+For the MVP the Agent has one tool:
 
-Example:
-
-```text
-"What are the advantages of ReAct?"
+```
+retrieve_context
 ```
 
-The question is sent to the Chat API.
+Future milestones will introduce additional tools.
 
 ---
 
-## Step 2 — Build Prompt Context
+## Step 1 — Receive User Question
 
-Module:
+Example
 
-```text
+```
+How do transformers work?
+```
+
+The Chat API forwards the request to the RAG Service.
+
+---
+
+## Step 2 — Agent Receives Request
+
+Module
+
+```
+agent.py
+```
+
+Responsibilities
+
+- Receive conversation
+- Decide which tool(s) to invoke
+- Coordinate tool execution
+- Stream generated tokens
+
+The Agent does **not** perform retrieval directly.
+
+---
+
+## Step 3 — Tool Selection
+
+Current Tool
+
+```
+retrieve_context
+```
+
+Future Tools
+
+- list_documents
+- summarize_document
+- search_by_metadata
+- search_by_filename
+- web_search
+- calculator
+
+The Agent determines which tools are needed to answer the request.
+
+---
+
+## Step 4 — Retrieve Context
+
+Modules
+
+```
+tools.py
+
+↓
+
+retriever.py
+
+↓
+
+vector_store.py
+```
+
+Responsibilities
+
+The retrieval tool
+
+- receives the user query
+- invokes the retriever
+- returns a RetrievalResult
+
+The retriever
+
+- queries the vector store
+- ranks results
+- preserves metadata
+- returns retrieved chunks with their scores
+
+Example
+
+```python
+RetrievalResult(
+    query="How does RAG work?",
+    chunks=[
+        RetrievedChunk(...),
+        RetrievedChunk(...),
+    ],
+)
+```
+
+The RetrievalResult becomes the single source of truth for the remainder of the request lifecycle.
+
+No other component should perform another retrieval.
+
+---
+
+## Step 5 — Build Prompt
+
+Module
+
+```
 prompts.py
 ```
 
-The `prompt_with_context` middleware:
+Input
 
-1. Extracts the last user message from the conversation state
-2. Calls `similarity_search(query, TOP_K=8)` to retrieve relevant chunks
-3. Deduplicates by page content
-4. Inserts retrieved content into the system prompt
+- User question
+- RetrievalResult
 
----
+Responsibilities
 
-## Step 3 — Retrieve Context (Tool)
+- Format retrieved chunks
+- Format metadata
+- Build the final prompt/messages for the LLM
 
-Module:
+The Prompt Builder never performs retrieval.
 
-```text
-retriever.py
-```
-
-The `retrieve_context` tool (used by the agent):
-
-1. Receives the user query
-2. Calls `similarity_search(query, k=2)` — a focused retrieval
-3. Returns serialized content for the LLM, with Document objects as artifact
+It consumes the RetrievalResult produced by the retriever.
 
 ---
 
-## Step 4 — Generate Response
+## Step 6 — Generate Response
 
-Module:
+Module
 
-```text
-rag_agent.py
+```
+agent.py
 ```
 
-Process:
+Responsibilities
 
-1. Agent receives the prompt with context (from Step 2)
-2. Agent may call the retrieve_context tool (from Step 3)
-3. LLM generates the answer grounded in the retrieved context
-4. Tokens are streamed back to the API
+- send prompt to the configured LLM
+- stream tokens
+- collect tool execution metadata
 
-Current LLM:
+Current Provider
 
-```text
-groq:llama-3.1-8b-instant
 ```
+Groq
+```
+
+The provider may change without affecting the surrounding pipeline.
 
 ---
 
-## Step 5 — Build Source Citations
+## Step 7 — Build Source Citations
 
-Module:
+Module
 
-```text
-api/chat.py
+```
+citations.py
 ```
 
-After the LLM response is complete, the chat endpoint:
+Input
 
-1. Runs an independent `similarity_search_with_scores(query, k=4)`
-2. Extracts metadata from each returned document
-3. Builds `SourceItem` objects:
+- RetrievalResult
 
-```json
-{
-  "document": "research.pdf",
-  "page": 7,
-  "document_id": "uuid-string",
-  "score": 0.4521
-}
-```
+Responsibilities
 
-Note: The score is a raw distance value from ChromaDB (lower = more similar). This will be replaced with a normalized relevance score in a future iteration.
+- Convert retrieved chunk metadata into API source objects
+- Preserve filename, page, document ID, and retrieval score
+
+The Citation Builder reuses the same RetrievalResult that was used to construct the prompt.
+
+No additional vector search should occur.
+
+This guarantees that citations always correspond to the exact documents used by the LLM.
 
 ---
 
-## Step 6 — Return Response
+## Step 8 — Build Chat Result
 
-Final response includes:
+The Agent returns a ChatResult containing
 
-* `answer` — LLM-generated text
-* `sources` — list of SourceItem with metadata
-* `tool_calls` — debug information about tool invocations
+- generated answer
+- source citations
+- tool execution metadata
+
+Example
+
+```python
+ChatResult(
+    answer="...",
+    sources=[...],
+    tool_calls=[...],
+)
+```
+
+The Chat API serializes the ChatResult into the public HTTP response.
+
+This separation keeps the API layer independent of the Agent implementation.
 
 ---
 
 # 5. Current Pipeline
 
-```text
-PDF
-
-↓
-
-Loader (PyPDFLoader)
-
-↓
-
-Metadata Enrichment (document_id, filename)
-
-↓
-
-RecursiveCharacterTextSplitter
-
-↓
-
-HuggingFace Embeddings (BGE)
-
-↓
-
-ChromaDB (PersistentClient)
-
-────────────────────────────
-
+```
 Question
-
-↓
-
-Prompt Builder (TOP_K=8)
 
 ↓
 
 Agent
 
-  ├── Retriever Tool (k=2)
+↓
 
-  └── LLM (groq:llama-3.1-8b-instant)
+Tool Selection
 
 ↓
 
-Source Builder (similarity_search_with_scores, k=4)
+retrieve_context
 
 ↓
 
-Answer + Sources + Tool Calls
+Retriever
+
+↓
+
+Vector Store
+
+↓
+
+RetrievalResult
+      │
+      ├────────────► Prompt Builder
+      │
+      ├────────────► Citation Builder
+      │
+      └────────────► Agent
+
+↓
+
+LLM
+
+↓
+
+ChatResult
+
+↓
+
+Streaming Response
 ```
 
 ---
 
 # 6. Planned Improvements
 
-The retrieval pipeline should evolve incrementally.
-
-Planned enhancements include:
-
 ## Retrieval
 
-* Hybrid Search
-* MMR Retrieval
-* Query Rewriting
-* Multi-query Retrieval
-* Context Compression
+- Hybrid Search
+- Query Rewriting
+- Metadata Filtering
+- MMR
+- Multi-query Retrieval
+- Context Compression
+- Parent Document Retrieval
 
 ---
 
 ## Ranking
 
-* Cross-Encoder Reranking
-* Reciprocal Rank Fusion
-* Score Threshold Filtering
+- Cross Encoder Reranking
+- Reciprocal Rank Fusion
+- Score Thresholding
+
+---
+
+## Agent
+
+- Multiple tools
+- Reflection
+- Planning
+- Multi-step reasoning
+- Tool routing
+- Tool retries
 
 ---
 
 ## Documents
 
-* Multiple PDFs
-* Metadata Filtering
-* Collections
-* Tags
+- Collections
+- Tags
+- Metadata search
+- OCR
 
 ---
 
 ## Generation
 
-* Better prompt templates
-* Structured output
-* Citation improvements
-* Answer confidence indicators
+- Better prompts
+- Structured outputs
+- Confidence estimation
+- Rich citations
 
 ---
 
 # 7. Design Principles
 
-The RAG pipeline should remain:
+The pipeline should always remain
 
-* Modular
-* Replaceable
-* Observable
-* Testable
+- Modular
+- Observable
+- Replaceable
+- Provider-agnostic
+- Tool-oriented
 
-Each stage should have one responsibility.
-
-Every stage should be independently replaceable without affecting unrelated components.
+Every stage should have one primary responsibility.
 
 ---
 
 # 8. Pipeline Rules
 
-The following rules should always hold:
+Loader
 
-* Loader only loads documents.
-* Splitter only splits documents.
-* Embedding module only generates embeddings.
-* Vector store only manages vectors.
-* Retriever only retrieves context.
-* Prompt builder only builds prompts.
-* Agent only communicates with the LLM.
+- Only loads documents.
+
+Splitter
+
+- Only splits documents.
+
+Embeddings
+
+- Only generates vectors.
+
+Vector Store
+
+- Only stores and retrieves vectors.
+
+Retriever
+
+- Only performs retrieval.
+- Produces a RetrievalResult.
+- Never constructs prompts.
+
+Prompt Builder
+
+- Only constructs prompts.
+- Never performs retrieval.
+
+Citation Builder
+
+- Only converts retrieved metadata into source citations.
+- Never queries the vector store.
+
+Tools
+
+- Only expose capabilities to the Agent.
+- Never duplicate retrieval already performed by the retriever.
+
+Agent
+
+- Only orchestrates tool execution and communicates with the LLM.
 
 Responsibilities should never overlap.
 
 ---
 
-# 9. Debugging Strategy
+# Retrieval Invariant
 
-When investigating incorrect answers, debug the pipeline in order:
+Exactly one retrieval operation should occur for each user request.
 
-1. Was the PDF loaded correctly?
-2. Was the text extracted correctly?
-3. Were chunks created appropriately?
-4. Were embeddings generated successfully?
-5. Did retrieval return relevant chunks?
-6. Was the prompt constructed correctly?
-7. Did the LLM receive the expected context?
-8. Were sources returned correctly?
+The resulting RetrievalResult is shared across downstream components, including:
 
-Debug one stage at a time.
+- Prompt Builder
+- Citation Builder
+- Agent
+
+Reusing the RetrievalResult improves performance, ensures citation consistency, and maintains a clear separation of responsibilities.
+
+Future retrieval enhancements (reranking, hybrid search, metadata filtering, query rewriting, etc.) should operate on the RetrievalResult rather than triggering additional searches.
 
 ---
 
-# 10. Future Goal
+# 9. Debugging Strategy
 
-The RAG pipeline should evolve into a provider-agnostic engine.
+Debug the pipeline in execution order.
 
-Changing any of the following should require minimal code changes:
+1. Was the PDF stored?
+2. Was text extracted correctly?
+3. Were chunks created correctly?
+4. Were embeddings generated?
+5. Did retrieval return relevant chunks?
+6. Did the Agent choose the correct tool?
+7. Was the prompt built correctly?
+8. Did the LLM receive the expected prompt?
+9. Were citations built correctly?
+10. Were tool calls recorded correctly?
 
-* LLM
-* Embedding model
-* Vector database
-* Retrieval strategy
-* Prompt template
+Investigate one stage at a time.
 
-The surrounding application should remain unchanged when individual pipeline components are replaced.
+---
+
+# 10. Future Vision
+
+The pipeline should evolve into a general-purpose Agentic RAG engine.
+
+Future capabilities should be introduced by adding new tools rather than redesigning the architecture.
+
+Examples include
+
+- Web Search
+- Knowledge Graph lookup
+- SQL querying
+- OCR
+- Document summarization
+- Multi-agent collaboration
+- Long-term memory
+
+The surrounding application should remain unchanged as these capabilities are added.
