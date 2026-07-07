@@ -3,9 +3,8 @@ import json
 from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
 
-from models.schemas import ChatRequest, ChatResponse, SourceItem
-from services.rag_service import RAGService
-from rag.vector_store import similarity_search_with_scores
+from backend.models.schemas import ChatRequest, ChatResponse, SourceItem
+from backend.services.rag_service import RAGService
 
 router = APIRouter(tags=["chat"])
 rag_service = RAGService()
@@ -13,41 +12,12 @@ rag_service = RAGService()
 
 @router.post("/chat", response_model=ChatResponse)
 def chat(request: ChatRequest):
-    stream = rag_service.stream_answer(request.message)
-    answer = ""
-    tool_calls: list[dict] = []
-    for kind, item in stream.interleave("messages", "tool_calls"):
-        if kind == "messages":
-            for token in item.text:
-                answer += token
-        elif kind == "tool_calls":
-            tool_calls.append(
-                {
-                    "tool_name": item.tool_name,
-                    "input": item.input,
-                    "output": item.output,
-                }
-            )
-
-    sources = _build_sources(request.message)
-    return ChatResponse(answer=answer, sources=sources, tool_calls=tool_calls)
-
-
-def _build_sources(query: str) -> list[SourceItem]:
-    """Build source citations from retrieved documents."""
-    results = similarity_search_with_scores(query, k=4)
-    sources = []
-    for doc, distance in results:
-        meta = doc.metadata
-        sources.append(
-            SourceItem(
-                document=meta.get("filename", "unknown"),
-                page=meta.get("page"),
-                document_id=meta.get("document_id", ""),
-                score=round(distance, 4) if distance is not None else None,
-            )
-        )
-    return sources
+    result = rag_service.invoke(request.message)
+    return ChatResponse(
+        answer=result.answer,
+        sources=[SourceItem(**s.__dict__) for s in result.sources],
+        tool_calls=result.tool_calls,
+    )
 
 
 @router.post("/chat/stream")
@@ -61,6 +31,7 @@ def chat_stream(request: ChatRequest):
 def _stream_events(message: str):
     stream = rag_service.stream_answer(message)
     tool_calls: list[dict] = []
+    retrieval_result = None
 
     for kind, item in stream.interleave("messages", "tool_calls"):
         if kind == "messages":
@@ -74,11 +45,19 @@ def _stream_events(message: str):
                     "output": item.output,
                 }
             )
+            # Check if this is a retrieve_context tool call with artifact
+            if item.tool_name == "retrieve_context" and hasattr(item, "artifact") and item.artifact:
+                retrieval_result = item.artifact
 
-    sources = _build_sources(message)
+    # Build sources from retrieval result
+    sources = []
+    if retrieval_result:
+        from backend.rag.citations import build_sources
+        sources = build_sources(retrieval_result)
+
     final = {
         "done": True,
-        "sources": [s.model_dump() for s in sources],
+        "sources": [s.__dict__ for s in sources],
         "tool_calls": tool_calls,
     }
     yield f"data: {json.dumps(final)}\n\n"

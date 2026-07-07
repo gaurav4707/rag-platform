@@ -1,8 +1,8 @@
 from fastapi import APIRouter, UploadFile, File, HTTPException, status
 
-from models.schemas import UploadResponse
-from services.document_service import process_upload
-from api.errors import AppError, ERROR_CODES
+from backend.models.schemas import UploadResponse
+from backend.services.document_service import process_upload
+from backend.api.errors import AppError, ERROR_CODES
 
 router = APIRouter(tags=["documents"])
 

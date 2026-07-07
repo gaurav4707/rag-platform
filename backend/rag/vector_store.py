@@ -1,7 +1,7 @@
 from langchain_chroma import Chroma
 
-from config import CHROMA_COLLECTION_NAME, CHROMA_DB_DIR
-from rag.embeddings import embeddings
+from backend.config import CHROMA_COLLECTION_NAME, CHROMA_DB_DIR, EMBEDDING_MODEL
+from backend.rag.embeddings import embeddings
 
 _collection: Chroma | None = None
 

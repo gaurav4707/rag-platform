@@ -1,15 +1,10 @@
-from backend.rag.agent import build_agent
+from backend.rag import agent
+from backend.models.rag_models import ChatResult
 
 
 class RAGService:
-    def __init__(self):
-        self.agent = build_agent()
-
     def stream_answer(self, query: str):
-        """
-        Stream the agent's response for a user query.
-        """
-        return self.agent.stream_events(
-            {"messages": [{"role": "user", "content": query}]},
-            version="v3",
-        )
+        return agent.stream_events(query)
+
+    def invoke(self, query: str) -> ChatResult:
+        return agent.invoke(query)

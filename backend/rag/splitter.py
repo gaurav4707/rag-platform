@@ -1,6 +1,6 @@
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from config import CHUNK_OVERLAP
-from config import CHUNK_SIZE
+from backend.config import CHUNK_OVERLAP
+from backend.config import CHUNK_SIZE
 
 text_splitter = RecursiveCharacterTextSplitter(
     chunk_size=CHUNK_SIZE,  # chunk size (characters)

@@ -1,11 +1,11 @@
 import uuid
 
-from config import UPLOAD_DIR
-from rag.loader import load_pdf
-from rag.splitter import text_splitter
-from rag.vector_store import add_documents, delete_document as delete_vector_document
-from rag.vector_store import list_documents as list_vector_documents
-from api.errors import AppError, ERROR_CODES, status
+from backend.config import UPLOAD_DIR
+from backend.rag.loader import load_pdf
+from backend.rag.splitter import text_splitter
+from backend.rag.vector_store import add_documents, delete_document as delete_vector_document
+from backend.rag.vector_store import list_documents as list_vector_documents
+from backend.api.errors import AppError, ERROR_CODES, status
 
 
 def process_upload(file_content: bytes, original_filename: str) -> dict:

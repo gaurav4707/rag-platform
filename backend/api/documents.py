@@ -1,7 +1,7 @@
 from fastapi import APIRouter
 
-from models.schemas import DocumentListItem, DeleteResponse
-from services.document_service import list_indexed_documents, delete_document
+from backend.models.schemas import DocumentListItem, DeleteResponse
+from backend.services.document_service import list_indexed_documents, delete_document
 
 router = APIRouter(tags=["documents"])
 
