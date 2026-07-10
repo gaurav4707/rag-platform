@@ -48,6 +48,65 @@ def _run_retrieval(
     raise ValueError(f"Unsupported search_type: {config.search_type}")
 
 
+def _deduplicate_chunks(chunks: list[tuple]) -> list[tuple]:
+    """Remove duplicate chunks based on stable identifier (document_id, chunk_index).
+
+    Preserves the first occurrence (highest score) of each unique chunk.
+    Only deduplicates when both identifiers are present and valid.
+    """
+    seen: set[tuple] = set()
+    unique_chunks: list[tuple] = []
+
+    for doc, score in chunks:
+        doc_id = doc.metadata.get("document_id")
+        chunk_index = doc.metadata.get("chunk_index")
+
+        # Only deduplicate if both identifiers are present
+        if doc_id is not None and chunk_index is not None:
+            key = (doc_id, chunk_index)
+            if key not in seen:
+                seen.add(key)
+                unique_chunks.append((doc, score))
+        else:
+            # Fallback: use content hash for chunks without metadata
+            content_key = doc.page_content[:200]  # First 200 chars as fallback
+            if content_key not in seen:
+                seen.add(content_key)
+                unique_chunks.append((doc, score))
+
+    return unique_chunks
+
+
+def _log_retrieval_details(
+    original_query: str,
+    retrieval_query: str,
+    chunks: list[RetrievedChunk],
+) -> None:
+    """Log detailed retrieval information for debugging."""
+    print("\n=== Retrieval ===")
+    print(f"Original Query : {original_query}")
+    print(f"Retrieval Query: {retrieval_query}")
+    print(f"Chunks Retrieved: {len(chunks)}")
+
+    for i, chunk in enumerate(chunks):
+        meta = chunk.document.metadata
+        doc_id = meta.get("document_id", "unknown")
+        filename = meta.get("filename", "unknown")
+        page = meta.get("page", "unknown")
+        chunk_idx = meta.get("chunk_index", "unknown")
+        score = chunk.score
+
+        preview = chunk.document.page_content[:300].replace("\n", " ")
+
+        print(f"\n  Chunk {i + 1}:")
+        print(f"    Document ID : {doc_id}")
+        print(f"    Filename    : {filename}")
+        print(f"    Page        : {page}")
+        print(f"    Chunk Index : {chunk_idx}")
+        print(f"    Score       : {score:.4f}")
+        print(f"    Preview     : {preview}")
+
+
 @tool(response_format="content_and_artifact")
 def retrieve_context(
     query: str,
@@ -65,6 +124,9 @@ def retrieve_context(
 
     results = _run_retrieval(retrieval_query, config)
 
+    # Deduplicate chunks by stable identifier (document_id, chunk_index)
+    results = _deduplicate_chunks(results)
+
     chunks = [
         RetrievedChunk(document=doc, score=score)
         for doc, score in results
@@ -80,11 +142,7 @@ def retrieve_context(
         f"Source: {chunk.document.metadata}\nContent: {chunk.document.page_content}"
         for chunk in chunks
     )
-    print("\n=== Retrieval ===")
-    print(f"Original : {retrieval_result.original_query}")
-    print(f"Retrieval: {retrieval_result.retrieval_query}")
 
-    for i, chunk in enumerate(chunks):
-        print(f"\nChunk {i+1}")
-        print(chunk.document.page_content[:400])
+    _log_retrieval_details(query, retrieval_query, chunks)
+
     return serialized, retrieval_result

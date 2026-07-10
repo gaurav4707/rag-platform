@@ -5,7 +5,6 @@ search queries for vector retrieval. It supports multiple strategies and is
 designed to be extensible for future strategies.
 """
 
-from backend.rag.llm import get_llm
 
 def rewrite_query(query: str, strategy: str = "none") -> str:
     """Rewrite the user's query based on the specified strategy.
@@ -39,9 +38,8 @@ def _rewrite_with_llm(query: str) -> str:
         The rewritten query, or the original query if rewriting fails.
     """
     try:
-        from langchain_groq import ChatGroq
+        from backend.rag.llm import get_llm
     except ImportError:
-        # If LLM dependencies are not available, fall back to original query
         return query
 
     llm = get_llm()

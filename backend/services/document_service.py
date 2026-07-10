@@ -1,11 +1,21 @@
+import hashlib
 import uuid
 
 from backend.config import UPLOAD_DIR
 from backend.rag.loader import load_pdf
 from backend.rag.splitter import text_splitter
-from backend.rag.vector_store import add_documents, delete_document as delete_vector_document
-from backend.rag.vector_store import list_documents as list_vector_documents
+from backend.rag.vector_store import (
+    add_documents,
+    delete_document as delete_vector_document,
+    find_document_by_hash,
+    list_documents as list_vector_documents,
+)
 from backend.api.errors import AppError, ERROR_CODES, status
+
+
+def _compute_file_hash(file_content: bytes) -> str:
+    """Compute SHA-256 hash of file content."""
+    return hashlib.sha256(file_content).hexdigest()
 
 
 def process_upload(file_content: bytes, original_filename: str) -> dict:
@@ -14,6 +24,23 @@ def process_upload(file_content: bytes, original_filename: str) -> dict:
     Returns upload metadata on success.
     Cleans up the saved file and any partial vector entries on failure.
     """
+    file_hash = _compute_file_hash(file_content)
+
+    # Check if document with same hash already exists
+    existing_doc = find_document_by_hash(file_hash)
+    if existing_doc:
+        print(f"Uploading: {original_filename}")
+        print(f"SHA256: {file_hash}")
+        print("Duplicate: Yes")
+        print("Skipping indexing.")
+
+        return {
+            "document_id": existing_doc["document_id"],
+            "filename": existing_doc["filename"],
+            "status": "already_indexed",
+            "already_indexed": True,
+        }
+
     document_id = str(uuid.uuid4())
     saved_path = UPLOAD_DIR / f"{document_id}.pdf"
 
@@ -28,6 +55,7 @@ def process_upload(file_content: bytes, original_filename: str) -> dict:
         for doc in docs:
             doc.metadata["document_id"] = document_id
             doc.metadata["filename"] = original_filename
+            doc.metadata["file_hash"] = file_hash
 
         splits = text_splitter.split_documents(docs)
 
@@ -59,10 +87,15 @@ def process_upload(file_content: bytes, original_filename: str) -> dict:
             http_status=status.HTTP_422_UNPROCESSABLE_ENTITY,
         )
 
+    print(f"Uploading: {original_filename}")
+    print(f"SHA256: {file_hash}")
+    print("Duplicate: No")
+
     return {
         "document_id": document_id,
         "filename": original_filename,
         "status": "indexed",
+        "already_indexed": False,
     }
 
 

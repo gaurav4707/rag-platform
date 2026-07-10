@@ -11,6 +11,7 @@ __all__ = [
     "delete_document",
     "similarity_search_with_scores",
     "list_documents",
+    "find_document_by_hash",
     "similarity_search_with_scores_filtered",
     "mmr_search_with_scores",
     "maximal_marginal_relevance",
@@ -64,8 +65,28 @@ def list_documents() -> list[dict]:
             documents.append({
                 "document_id": doc_id,
                 "filename": metadata.get("filename", "unknown"),
+                "file_hash": metadata.get("file_hash", ""),
             })
     return documents
+
+
+def find_document_by_hash(file_hash: str) -> dict | None:
+    """Find a document by its file hash.
+
+    Returns the first document found with the matching hash, or None.
+    """
+    collection = _get_collection()
+    all_data = collection.get(where={"file_hash": file_hash})
+    metadatas = all_data.get("metadatas", [])
+    if not metadatas:
+        return None
+    # Return the first matching document's info
+    meta = metadatas[0]
+    return {
+        "document_id": meta.get("document_id"),
+        "filename": meta.get("filename", "unknown"),
+        "file_hash": file_hash,
+    }
 
 
 def similarity_search_with_scores_filtered(

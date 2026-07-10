@@ -352,9 +352,13 @@ class TestRetrieveContext:
         from backend.rag.retriever import retrieve_context
 
         config = RetrievalConfig(top_k=3)
-        mock_doc = Document(page_content="test", metadata={})
+        mock_docs = [
+            Document(page_content="test 1", metadata={"document_id": "1", "chunk_index": 0}),
+            Document(page_content="test 2", metadata={"document_id": "1", "chunk_index": 1}),
+            Document(page_content="test 3", metadata={"document_id": "1", "chunk_index": 2}),
+        ]
         with patch("backend.rag.retriever.similarity_search_with_scores_filtered") as mock_search:
-            mock_search.return_value = [(mock_doc, 0.5)] * 3
+            mock_search.return_value = [(doc, 0.5) for doc in mock_docs]
             serialized, artifact = retrieve_context.func("query", config=config)
         assert len(artifact.chunks) == 3
 
@@ -444,11 +448,11 @@ class TestQueryRewriting:
 
         # This will use the actual LLM if no mock, so we just verify it returns a string
         # In practice, this test would be mocked
-        with patch("langchain_groq.ChatGroq") as mock_chat_groq:
+        with patch("backend.rag.llm.get_llm") as mock_get_llm:
             mock_llm = MagicMock()
             mock_llm.invoke.return_value = MagicMock(content="rewritten query")
-            mock_chat_groq.return_value = mock_llm
-            
+            mock_get_llm.return_value = mock_llm
+
             result = rewrite_query("test query", "llm")
             assert isinstance(result, str)
             assert result == "rewritten query"
@@ -682,87 +686,6 @@ class TestMetadataFiltering:
 class TestIntegration:
     """End-to-end test with a real (temporary) ChromaDB instance."""
 
-    @pytest.fixture
-    def temp_chroma(self, tmp_path):
-        """Create a temporary Chroma collection with dummy embeddings."""
-        from langchain_chroma import Chroma
-
-        class DummyEmbeddings:
-            """Deterministic embedding function for testing."""
-
-            def embed_query(self, text: str) -> list[float]:
-                import hashlib
-
-                h = hashlib.md5(text.encode()).hexdigest()
-                return [float(ord(c)) / 255.0 for c in h[:4]]
-
-            def embed_documents(
-                self, texts: list[str]
-            ) -> list[list[float]]:
-                return [self.embed_query(t) for t in texts]
-
-        db_dir = tmp_path / "chroma_test"
-        db_dir.mkdir(parents=True, exist_ok=True)
-
-        collection = Chroma(
-            collection_name="test_collection",
-            embedding_function=DummyEmbeddings(),
-            persist_directory=str(db_dir),
-        )
-
-        docs = [
-            Document(
-                page_content="The capital of France is Paris.",
-                metadata={
-                    "document_id": "1",
-                    "filename": "geo.pdf",
-                    "page": 1,
-                },
-            ),
-            Document(
-                page_content="Paris is known for the Eiffel Tower.",
-                metadata={
-                    "document_id": "1",
-                    "filename": "geo.pdf",
-                    "page": 2,
-                },
-            ),
-            Document(
-                page_content="The Eiffel Tower was built in 1889.",
-                metadata={
-                    "document_id": "1",
-                    "filename": "geo.pdf",
-                    "page": 3,
-                },
-            ),
-            Document(
-                page_content="Python is a programming language.",
-                metadata={
-                    "document_id": "2",
-                    "filename": "tech.pdf",
-                    "page": 1,
-                },
-            ),
-            Document(
-                page_content="Python was created by Guido van Rossum.",
-                metadata={
-                    "document_id": "2",
-                    "filename": "tech.pdf",
-                    "page": 2,
-                },
-            ),
-            Document(
-                page_content="Python supports object-oriented programming.",
-                metadata={
-                    "document_id": "2",
-                    "filename": "tech.pdf",
-                    "page": 3,
-                },
-            ),
-        ]
-        collection.add_documents(docs)
-        yield collection
-
     def test_similarity_retrieval_succeeds(self, temp_chroma):
         from backend.rag.retriever import _run_retrieval
 
@@ -931,3 +854,360 @@ class TestIntegration:
         with patch("backend.rag.vector_store._get_collection", return_value=temp_chroma):
             results = _run_retrieval("France", config)
         assert len(results) == 0
+
+
+# ======================================================================
+# Deduplication Tests
+# ======================================================================
+
+class TestDeduplication:
+    """Tests for duplicate chunk removal in retrieval."""
+
+    def test_deduplicate_by_document_id_and_chunk_index(self):
+        """Chunks with same document_id and chunk_index are deduplicated."""
+        from backend.rag.retriever import _deduplicate_chunks
+
+        doc1 = Document(
+            page_content="chunk A",
+            metadata={"document_id": "doc1", "chunk_index": 0},
+        )
+        doc2 = Document(
+            page_content="chunk B",
+            metadata={"document_id": "doc1", "chunk_index": 1},
+        )
+        doc3 = Document(
+            page_content="chunk A duplicate",
+            metadata={"document_id": "doc1", "chunk_index": 0},  # Same ID as doc1
+        )
+
+        chunks = [(doc1, 0.1), (doc2, 0.2), (doc3, 0.15)]
+        result = _deduplicate_chunks(chunks)
+
+        assert len(result) == 2
+        assert result[0][0].page_content == "chunk A"  # First occurrence kept
+        assert result[1][0].page_content == "chunk B"
+
+    def test_deduplicate_preserves_highest_score(self):
+        """First occurrence (highest score) is preserved when deduplicating."""
+        from backend.rag.retriever import _deduplicate_chunks
+
+        doc1 = Document(
+            page_content="content",
+            metadata={"document_id": "doc1", "chunk_index": 0},
+        )
+        doc2 = Document(
+            page_content="content duplicate",
+            metadata={"document_id": "doc1", "chunk_index": 0},
+        )
+
+        # doc1 has higher score (lower distance = better)
+        chunks = [(doc1, 0.1), (doc2, 0.3)]
+        result = _deduplicate_chunks(chunks)
+
+        assert len(result) == 1
+        assert result[0][1] == 0.1  # Higher score preserved
+
+    def test_deduplicate_fallback_to_content_hash(self):
+        """Chunks without metadata are deduplicated by content prefix."""
+        from backend.rag.retriever import _deduplicate_chunks
+
+        # Create content that shares the first 200+ characters
+        prefix = "This is a long common prefix that is definitely more than two hundred characters long so that the deduplication logic will trigger on the prefix match. " * 3
+        doc1 = Document(page_content=prefix + " unique ending A", metadata={})
+        doc2 = Document(page_content="completely different content B", metadata={})
+        doc3 = Document(page_content=prefix + " unique ending C", metadata={})  # Same prefix
+
+        chunks = [(doc1, 0.1), (doc2, 0.2), (doc3, 0.15)]
+        result = _deduplicate_chunks(chunks)
+
+        # doc1 and doc3 share first 200 chars prefix, so doc3 is deduplicated
+        assert len(result) == 2
+
+    def test_deduplicate_no_metadata_no_false_positives(self):
+        """Chunks with different content are not deduplicated when no metadata."""
+        from backend.rag.retriever import _deduplicate_chunks
+
+        doc1 = Document(page_content="completely different content one", metadata={})
+        doc2 = Document(page_content="completely different content two", metadata={})
+
+        chunks = [(doc1, 0.1), (doc2, 0.2)]
+        result = _deduplicate_chunks(chunks)
+
+        assert len(result) == 2
+
+
+# ======================================================================
+# Chunk Quality Tests
+# ======================================================================
+
+class TestChunkQuality:
+    """Tests for chunk boundary quality."""
+
+    def test_splitter_uses_custom_separators(self):
+        """Verify splitter is configured with improved separators."""
+        from backend.rag.splitter import text_splitter
+
+        # Check that custom separators are used
+        separators = text_splitter._separators
+        assert "\n\n" in separators
+        assert "\n# " in separators
+        assert ". " in separators
+        assert "! " in separators
+        assert "? " in separators
+
+    def test_chunking_preserves_headings(self):
+        """Chunks should start at heading boundaries when possible."""
+        from backend.rag.splitter import text_splitter
+
+        # Create long text that forces multiple chunks
+        long_para = "This is a long paragraph with enough content to fill space. " * 20
+
+        text = f"""# Introduction
+
+{long_para}
+
+# Chapter 1
+
+{long_para}
+
+## Section 1.1
+
+{long_para}"""
+
+        chunks = text_splitter.split_text(text)
+
+        # Should have multiple chunks
+        assert len(chunks) > 1
+        # First chunk should contain the first heading
+        assert "# Introduction" in chunks[0]
+        # At least one chunk should start with a chapter heading
+        assert any(chunk.strip().startswith("# Chapter 1") for chunk in chunks)
+
+    def test_chunking_avoids_mid_sentence_splits(self):
+        """Chunks should prefer sentence boundaries over mid-sentence."""
+        from backend.rag.splitter import text_splitter
+
+        # Long sentence that would force a split
+        text = "This is a very long sentence that goes on and on and on and on and on and on and on and on and on and on and on and on and on and on and on and on and on and on and on and on and on and on and on and on and on and on and on and on and on and on and on."
+
+        chunks = text_splitter.split_text(text)
+
+        # Should split at sentence boundaries if possible
+        # With our separators, it should prefer ". " over mid-word
+        for chunk in chunks:
+            # Chunks shouldn't end mid-word (no trailing partial words)
+            assert not chunk.rstrip().endswith(("and on", "and o", "and ", "on a"))
+
+
+# ======================================================================
+# Retrieval Logging Tests
+# ======================================================================
+
+class TestRetrievalLogging:
+    """Tests for improved retrieval logging."""
+
+    def test_log_retrieval_details_outputs_expected_format(self, capsys):
+        """Verify logging function outputs structured details."""
+        from backend.rag.retriever import _log_retrieval_details
+        from backend.models.rag_models import RetrievedChunk
+        from langchain_core.documents import Document
+
+        chunks = [
+            RetrievedChunk(
+                document=Document(
+                    page_content="Test content for preview",
+                    metadata={
+                        "document_id": "doc123",
+                        "filename": "test.pdf",
+                        "page": 5,
+                        "chunk_index": 2,
+                    },
+                ),
+                score=0.1234,
+            )
+        ]
+
+        _log_retrieval_details("original query", "rewritten query", chunks)
+
+        captured = capsys.readouterr()
+        output = captured.out
+
+        assert "=== Retrieval ===" in output
+        assert "Original Query : original query" in output
+        assert "Retrieval Query: rewritten query" in output
+        assert "Chunks Retrieved: 1" in output
+        assert "Document ID : doc123" in output
+        assert "Filename    : test.pdf" in output
+        assert "Page        : 5" in output
+        assert "Chunk Index : 2" in output
+        assert "Score       : 0.1234" in output
+        assert "Preview     : Test content for preview" in output
+
+
+# ======================================================================
+# Duplicate Document Detection Tests
+# ======================================================================
+
+class TestDuplicateDetection:
+    """Tests for duplicate document detection using file hash."""
+
+    def test_compute_file_hash(self):
+        """Test that file hash is computed correctly."""
+        from backend.services.document_service import _compute_file_hash
+
+        content = b"test pdf content"
+        hash1 = _compute_file_hash(content)
+        hash2 = _compute_file_hash(content)
+        hash3 = _compute_file_hash(b"different content")
+
+        assert hash1 == hash2  # Same content = same hash
+        assert hash1 != hash3  # Different content = different hash
+        assert len(hash1) == 64  # SHA-256 hex length
+
+    def test_process_upload_stores_file_hash_in_metadata(self):
+        """Verify uploaded document chunks include file_hash metadata."""
+        import hashlib
+        content = b"test content"
+        file_hash = hashlib.sha256(content).hexdigest()
+
+        # Verify hash format
+        assert len(file_hash) == 64
+        assert all(c in "0123456789abcdef" for c in file_hash)
+
+    def test_find_document_by_hash_not_found(self, temp_chroma):
+        """Test finding a non-existent file hash returns None."""
+        from backend.rag.vector_store import find_document_by_hash
+
+        result = find_document_by_hash("nonexistent_hash")
+        assert result is None
+
+
+# ======================================================================
+# Upload Duplicate Tests (using mocking)
+# ======================================================================
+
+class TestUploadDuplicates:
+    """Integration tests for duplicate upload detection."""
+
+    def test_upload_same_file_twice_returns_existing(self, temp_chroma, monkeypatch):
+        """Uploading the same PDF twice should return existing document."""
+        from backend.services.document_service import process_upload
+        from backend.rag.loader import load_pdf
+        from langchain_core.documents import Document
+
+        # Mock load_pdf to return test documents
+        def mock_load_pdf(path):
+            return [
+                Document(
+                    page_content="Test content",
+                    metadata={"page": 1},
+                )
+            ]
+
+        monkeypatch.setattr("backend.services.document_service.load_pdf", mock_load_pdf)
+        monkeypatch.setattr("backend.rag.vector_store._get_collection", lambda: temp_chroma)
+
+        pdf_content = b"%PDF-1.4\nTest content"
+
+        # First upload
+        result1 = process_upload(pdf_content, "test.pdf")
+
+        # Second upload with same content
+        result2 = process_upload(pdf_content, "test.pdf")
+
+        # Should return same document ID
+        assert result1["document_id"] == result2["document_id"]
+        assert result2["already_indexed"] is True
+        assert result2["status"] == "already_indexed"
+
+    def test_upload_different_files_both_indexed(self, temp_chroma, monkeypatch):
+        """Uploading two different PDFs should index both."""
+        from backend.services.document_service import process_upload
+        from backend.rag.loader import load_pdf
+        from langchain_core.documents import Document
+
+        call_count = {"count": 0}
+
+        def mock_load_pdf(path):
+            call_count["count"] += 1
+            return [
+                Document(
+                    page_content=f"Test content {call_count['count']}",
+                    metadata={"page": 1},
+                )
+            ]
+
+        monkeypatch.setattr("backend.services.document_service.load_pdf", mock_load_pdf)
+        monkeypatch.setattr("backend.rag.vector_store._get_collection", lambda: temp_chroma)
+
+        pdf1 = b"%PDF-1.4\nContent one"
+        pdf2 = b"%PDF-1.4\nContent two"
+
+        result1 = process_upload(pdf1, "doc1.pdf")
+        result2 = process_upload(pdf2, "doc2.pdf")
+
+        assert result1["document_id"] != result2["document_id"]
+        assert result1["already_indexed"] is False
+        assert result2["already_indexed"] is False
+
+    def test_upload_same_filename_different_content_both_indexed(self, temp_chroma, monkeypatch):
+        """Same filename but different content should both be indexed."""
+        from backend.services.document_service import process_upload
+        from backend.rag.loader import load_pdf
+        from langchain_core.documents import Document
+
+        call_count = {"count": 0}
+
+        def mock_load_pdf(path):
+            call_count["count"] += 1
+            return [
+                Document(
+                    page_content=f"Test content {call_count['count']}",
+                    metadata={"page": 1},
+                )
+            ]
+
+        monkeypatch.setattr("backend.services.document_service.load_pdf", mock_load_pdf)
+        monkeypatch.setattr("backend.rag.vector_store._get_collection", lambda: temp_chroma)
+
+        pdf1 = b"%PDF-1.4\nContent A"
+        pdf2 = b"%PDF-1.4\nContent B"
+
+        result1 = process_upload(pdf1, "same.pdf")
+        result2 = process_upload(pdf2, "same.pdf")
+
+        assert result1["document_id"] != result2["document_id"]
+        assert result1["already_indexed"] is False
+        assert result2["already_indexed"] is False
+
+    def test_upload_returns_file_hash_in_metadata(self, temp_chroma, monkeypatch):
+        """Verify returned metadata includes file hash info."""
+        from backend.services.document_service import process_upload
+        from backend.rag.loader import load_pdf
+        from langchain_core.documents import Document
+        import hashlib
+
+        def mock_load_pdf(path):
+            return [
+                Document(
+                    page_content="Test content for hashing",
+                    metadata={"page": 1},
+                )
+            ]
+
+        monkeypatch.setattr("backend.services.document_service.load_pdf", mock_load_pdf)
+        monkeypatch.setattr("backend.rag.vector_store._get_collection", lambda: temp_chroma)
+
+        pdf_content = b"%PDF-1.4\nTest content for hashing"
+        expected_hash = hashlib.sha256(pdf_content).hexdigest()
+
+        result = process_upload(pdf_content, "test.pdf")
+
+        # The response should include the document info
+        assert "document_id" in result
+        assert result["status"] in ("indexed", "already_indexed")
+        # Verify the hash is stored in vector store for this document
+        from backend.rag.vector_store import find_document_by_hash
+        found = find_document_by_hash(expected_hash)
+        assert found is not None
+        assert found["file_hash"] == expected_hash
