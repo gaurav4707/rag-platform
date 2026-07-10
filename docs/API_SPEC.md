@@ -272,7 +272,7 @@ Purpose
 
 Receive the LLM response as a stream.
 
-This endpoint is planned but not yet implemented.
+This endpoint is implemented and returns tokens via Server-Sent Events.
 
 ### Stream Events
 

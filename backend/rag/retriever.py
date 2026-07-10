@@ -1,35 +1,63 @@
 from langchain.tools import tool
-from langchain_chroma import Chroma
 
-from backend.config import CHROMA_COLLECTION_NAME, CHROMA_DB_DIR
-from backend.rag.embeddings import embeddings
+from backend.rag.retrieval_config import DEFAULT_RETRIEVAL_CONFIG, RetrievalConfig
+from backend.rag.vector_store import (
+    embeddings,
+    maximal_marginal_relevance,
+    mmr_search_with_scores,
+    similarity_search_with_scores_filtered,
+)
 from backend.models.rag_models import RetrievalResult, RetrievedChunk
 
 
-_collection: Chroma | None = None
+def _run_similarity_search(
+    query: str,
+    config: RetrievalConfig,
+) -> list[tuple]:
+    return similarity_search_with_scores_filtered(
+        query=query,
+        top_k=config.top_k,
+        metadata_filter=config.metadata_filter,
+    )
 
 
-def _get_collection() -> Chroma:
-    """Return the cached Chroma vector store collection."""
-    global _collection
-    if _collection is None:
-        _collection = Chroma(
-            collection_name=CHROMA_COLLECTION_NAME,
-            embedding_function=embeddings,
-            persist_directory=str(CHROMA_DB_DIR),
-        )
-    return _collection
+def _run_mmr_search(
+    query: str,
+    config: RetrievalConfig,
+) -> list[tuple]:
+    return mmr_search_with_scores(
+        query=query,
+        top_k=config.top_k,
+        fetch_k=config.fetch_k,
+        lambda_mult=config.lambda_mult,
+        metadata_filter=config.metadata_filter,
+        maximal_marginal_relevance=maximal_marginal_relevance,
+    )
+
+
+def _run_retrieval(
+    query: str,
+    config: RetrievalConfig,
+) -> list[tuple]:
+    if config.search_type == "similarity":
+        return _run_similarity_search(query, config)
+
+    if config.search_type == "mmr":
+        return _run_mmr_search(query, config)
+
+    raise ValueError(f"Unsupported search_type: {config.search_type}")
 
 
 @tool(response_format="content_and_artifact")
-def retrieve_context(query: str):
+def retrieve_context(
+    query: str,
+    config: RetrievalConfig = DEFAULT_RETRIEVAL_CONFIG,
+):
     """Retrieve information to help answer a query.
 
     Returns a RetrievalResult containing the query and retrieved chunks with scores.
     """
-    k = 4
-    collection = _get_collection()
-    results = collection.similarity_search_with_score(query, k=k)
+    results = _run_retrieval(query, config)
 
     chunks = [
         RetrievedChunk(document=doc, score=score)

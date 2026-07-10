@@ -55,59 +55,63 @@ The project prioritizes **understanding over abstraction**, **modularity over sh
 
 ### Implemented
 
-- **PDF Loading & Chunking** — Load documents from web URLs, split into chunks using `RecursiveCharacterTextSplitter`.
-- **Vector Embeddings** — Generate embeddings via Google Gemini models and store them in ChromaDB.
-- **Semantic Retrieval** — Retrieve the most relevant document chunks for a user query.
-- **LLM-Powered Answers** — Generate answers using Google Gemini (2.5 Flash), constrained exclusively to retrieved context.
+- **PDF Loading & Chunking** — Extract text from PDFs and split into chunks using `RecursiveCharacterTextSplitter`.
+- **Vector Embeddings** — Generate embeddings via HuggingFace models and store them in ChromaDB.
+- **Semantic Retrieval** — Retrieve the most relevant document chunks using similarity or MMR search.
+- **Metadata Filtering** — Filter retrieval results by document_id, filename, or page.
+- **Strategy-Based Retrieval** — Choose between Similarity and Maximum Marginal Relevance (MMR) via `RetrievalConfig`.
+- **Agentic RAG** — LLM-powered agent with tool registry, tool orchestration, and streaming execution.
+- **Document Management** — Upload, list, and delete PDFs through dedicated API endpoints.
+- **LLM-Powered Answers** — Generate answers using ChatGroq/Gemini, grounded in retrieved context with citations.
 - **Health Check API** — `GET /health` endpoint for service monitoring.
-- **Chat API** — `POST /chat` endpoint that accepts a user message and returns a grounded answer with tool call metadata.
-- **Modular RAG Pipeline** — Loader → Splitter → Embeddings → Vector Store → Retriever → Prompt Builder → Agent.
+- **Chat API** — `POST /chat` endpoint returning grounded answers with source citations and tool call metadata.
+- **Streaming Chat** — `POST /chat/stream` for token-by-token streaming via Server-Sent Events.
+- **Modular RAG Pipeline** — Loader → Splitter → Embeddings → Vector Store → Retriever → Agent.
 - **Clean FastAPI Structure** — Layered architecture with thin API routes, service layer coordination, and isolated RAG modules.
+- **Comprehensive Tests** — 49 automated tests covering retrieval strategies, configuration, metadata filtering, and integration.
 
 ### Planned
 
-- PDF upload via `multipart/form-data`
-- Document management (list, delete)
-- Streaming chat responses (SSE)
-- React + TypeScript frontend
+- Query rewriting
+- Hybrid search (dense + sparse)
+- Cross-encoder reranking
 - Conversation memory with SQLite
-- Retrieval improvements (MMR, query rewriting)
-- Advanced RAG (hybrid search, reranking, metadata filtering)
+- React + TypeScript frontend refinements
 
 ---
 
 ## Architecture
 
 ```
-                        +----------------------+
-                        |    React Frontend     |  (planned)
-                        +----------+-----------+
-                                   |
-                            HTTP / Streaming
-                                   |
-                        +----------v-----------+
-                        |    FastAPI API Layer   |  Thin routes, no business logic
-                        +----------+-----------+
-                                   |
-                         Application Services
-                                   |
-               +--------------------+--------------------+
-               |                    |                    |
-        Document Service      Chat Service        RAG Service
-               |                    |                    |
-               +--------------------+--------------------+
-                                   |
-                             RAG Engine
-                                   |
-          +------------+-----------+-----------+------------+
-          |            |           |           |            |
-      Loader      Splitter    Embeddings   Retriever   Prompt Builder
-          |            |           |           |            |
-          +------------+-----------+-----------+------------+
-                                   |
-                             Vector Store
-                                   |
-                              ChromaDB
+                         +----------------------+
+                         |    React Frontend     |
+                         +----------+-----------+
+                                    |
+                             HTTP / Streaming
+                                    |
+                         +----------v-----------+
+                         |    FastAPI API Layer   |  Thin routes, no business logic
+                         +----------+-----------+
+                                    |
+                          Application Services
+                                    |
+                +--------------------+--------------------+
+                |                    |                    |
+         Document Service      Chat Service        RAG Service
+                |                    |                    |
+                +--------------------+--------------------+
+                                    |
+                              RAG Engine
+                                    |
+           +------------+-----------+-----------+------------+
+           |            |           |           |            |
+       Loader      Splitter    Embeddings   Retriever   Agent / LLM
+           |            |           |           |            |
+           +------------+-----------+-----------+------------+
+                                    |
+                              Vector Store
+                                    |
+                               ChromaDB
 ```
 
 ### Data Flow
@@ -121,12 +125,25 @@ The project prioritizes **understanding over abstraction**, **modularity over sh
    ↓                             ↓
   Splitter                  RAG Service
    ↓                             ↓
-  Embeddings                Retriever
+  Embeddings                Agent
    ↓                             ↓
-  ChromaDB                  Prompt Builder
-                                 ↓
-                               LLM (Gemini)
-                                 ↓
+  ChromaDB                  Tool Registry
+                                  ↓
+                            retrieve_context
+                                  ↓
+                            Retriever (Strategy)
+                              ├── Similarity
+                              └── MMR
+                                  ↓
+                            Vector Store / ChromaDB
+                                  ↓
+                            RetrievalResult
+                              ├──► Prompt Builder
+                              ├──► Citation Builder
+                              └──► Agent
+                                  ↓
+                            LLM
+                                  ↓
                             Stream Response
 ```
 
@@ -184,28 +201,41 @@ rag-platform/
 │   ├── config.py                       # All project-wide constants
 │   │
 │   ├── api/
-│   │   ├── chat.py                     # POST /chat endpoint
+│   │   ├── chat.py                     # POST /chat, /chat/stream endpoints
 │   │   ├── health.py                   # GET /health endpoint
-│   │   ├── documents.py                # (planned) Document management
-│   │   └── upload.py                   # (planned) PDF upload
+│   │   ├── documents.py                # Document management endpoints
+│   │   ├── upload.py                   # PDF upload endpoint
+│   │   └── errors.py                   # Standardized error handlers
 │   │
 │   ├── services/
-│   │   └── rag_service.py              # RAG orchestration layer
+│   │   ├── rag_service.py              # Chat orchestration layer
+│   │   └── document_service.py         # Document lifecycle management
 │   │
 │   ├── rag/
 │   │   ├── agent.py                    # LLM agent setup and execution
+│   │   ├── tool_registry.py            # Tool registration for the agent
+│   │   ├── retriever.py                # Retrieval strategy orchestration
+│   │   ├── vector_store.py             # ChromaDB operations and retrieval
 │   │   ├── embeddings.py               # Embedding model initialization
-│   │   ├── loader.py                   # Document loading (web, PDF)
+│   │   ├── loader.py                   # PDF text extraction
+│   │   ├── splitter.py                 # Text chunking
 │   │   ├── prompts.py                  # System prompt construction
-│   │   ├── retriever.py                # Semantic retrieval logic
-│   │   ├── splitter.py                 # Text chunking configuration
-│   │   └── vector_store.py             # ChromaDB operations
+│   │   ├── citations.py                # Source citation builder
+│   │   └── retrieval_config.py         # RetrievalConfig dataclass
 │   │
 │   ├── models/
-│   │   └── schemas.py                  # Pydantic models (ChatRequest, ChatResponse, HealthResponse)
+│   │   ├── schemas.py                  # Public API Pydantic models
+│   │   └── rag_models.py               # Internal RAG domain models
+│   │
+│   ├── tests/
+│   │   ├── __init__.py
+│   │   ├── conftest.py                 # Shared test fixtures
+│   │   └── test_retriever.py           # 49 retriever tests
 │   │
 │   └── storage/
 │       └── chroma_langchain_db/        # Persistent vector store
+│
+├── frontend/                           # React + TypeScript + Vite app
 │
 ├── docs/
 │   ├── ARCHITECTURE.md                 # System architecture
@@ -215,7 +245,7 @@ rag-platform/
 │   ├── RAG_PIPELINE.md                 # RAG pipeline details
 │   └── TODO.md                         # Active task tracking
 │
-├── venv/                               # Virtual environment (local)
+├── .venv/                              # Virtual environment (local)
 ├── AGENTS.md                           # AI coding agent instructions
 ├── .gitignore
 ├── .env                                # Environment variables (local, not tracked)
@@ -266,14 +296,14 @@ The API will be available at `http://localhost:8000`.
 
 | Milestone | Status | Description |
 |-----------|--------|-------------|
-| **1 — Backend Foundation** | 🏗️ In Progress | FastAPI structure, upload/chat endpoints, document management, vector store |
-| **2 — React Frontend** | ⏳ Not Started | React app with upload, chat, and document management pages |
-| **3 — Retrieval Improvements** | ⏳ Not Started | MMR, query rewriting, better chunk selection |
-| **4 — Conversation Memory** | ⏳ Not Started | SQLite, chat history, persistent conversations |
-| **5 — UI & UX** | ⏳ Not Started | Dark mode, loading states, settings, error handling |
-| **6 — Advanced RAG** | ⏳ Not Started | Hybrid search, reranking, metadata filtering, multi-provider |
+| **1 — Backend Foundation** | ✅ Completed | FastAPI structure, upload/chat endpoints, document management, vector store |
+| **2 — React Frontend** | ✅ Completed | React app with upload, chat, and document management pages |
+| **3 — Retrieval Intelligence** | 🚧 In Progress | MMR, metadata filtering, retrieval strategies |
+| **4 — Agent Foundations** | ✅ Completed | Tool registry, agent orchestration, streaming tool execution |
+| **5 — User Experience** | ⏳ Planned | Dark mode, loading states, settings, error handling |
+| **6 — Advanced RAG** | ⏳ Planned | Hybrid search, reranking, query rewriting, multi-provider |
 
-> **Current focus:** Milestone 1 — the backend is being refactored into a clean, modular architecture. PDF upload and document management endpoints are coming next.
+> **Current focus:** Milestone 3 — Retrieval Intelligence. Implementing query rewriting, hybrid search, reranking, and retrieval evaluation.
 
 ---
 
@@ -283,6 +313,10 @@ The API will be available at `http://localhost:8000`.
 |--------|----------|-------------|
 | `GET` | `/health` | Health check — returns `{"status": "healthy"}` |
 | `POST` | `/chat` | Send a message and receive a grounded answer |
+| `POST` | `/chat/stream` | Stream LLM response tokens via SSE |
+| `POST` | `/documents/upload` | Upload a PDF for indexing |
+| `GET` | `/documents` | List all indexed documents |
+| `DELETE` | `/documents/{id}` | Remove a document and its vectors |
 
 ### Example Request
 
@@ -307,15 +341,6 @@ curl -X POST http://localhost:8000/chat \
 }
 ```
 
-### Planned Endpoints
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `POST` | `/documents/upload` | Upload a PDF for indexing |
-| `GET` | `/documents` | List all indexed documents |
-| `DELETE` | `/documents/{id}` | Remove a document and its vectors |
-| `POST` | `/chat/stream` | Stream LLM response tokens via SSE |
-
 ---
 
 ## Future Enhancements
@@ -323,17 +348,13 @@ curl -X POST http://localhost:8000/chat \
 <details>
 <summary><strong>Backend</strong></summary>
 
-- [ ] PDF upload via `multipart/form-data`
-- [ ] Document management (list, delete)
-- [ ] Streaming chat responses (Server-Sent Events)
-- [ ] Conversation memory with SQLite
+- [ ] Query rewriting
 - [ ] Hybrid search (dense + sparse)
 - [ ] Cross-encoder reranking
-- [ ] Metadata filtering
+- [ ] Conversation memory with SQLite
 - [ ] Multiple embedding providers
 - [ ] Multiple LLM providers
 - [ ] Parent Document Retrieval
-- [ ] Query rewriting
 - [ ] Docker support
 - [ ] CI/CD pipeline
 
@@ -342,13 +363,10 @@ curl -X POST http://localhost:8000/chat \
 <details>
 <summary><strong>Frontend</strong></summary>
 
-- [ ] React + TypeScript + Vite setup
-- [ ] Drag-and-drop PDF upload
-- [ ] Chat interface with streaming responses
-- [ ] Document list and management
 - [ ] Dark mode
-- [ ] Markdown rendering with syntax highlighting
-- [ ] Mobile-responsive layout
+- [ ] Settings page
+- [ ] Conversation history
+- [ ] Accessibility audit
 
 </details>
 

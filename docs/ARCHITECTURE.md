@@ -55,23 +55,25 @@ Every future feature should follow this architecture unless an explicit architec
                |                               |
             Agent                       Prompt Builder
                |
-        Tool Selection
+        Tool Registry
                |
     +----------+-----------+----------------+
     |                      |                |
-Retriever Tool      Future Tools       Future Tools
-    |               (Web Search,       (Calculator,
-    |               Metadata, etc.)    Summarizer...)
+Retriever Tool       Future Tools       Future Tools
+(retrieve_context)   (Web Search,       (Calculator,
+                     Metadata, etc.)    Summarizer...)
     |
-Retriever
+Retriever (Strategy Dispatch)
     |
-Vector Store
+Vector Store (Similarity / MMR / Metadata Filtering)
     |
     RetrievalResult
     │
     ├────────────► Prompt Builder
     │
-    └────────────► Citation Builder
+    ├────────────► Citation Builder
+    │
+    └────────────► Agent
     |
 Embeddings
     |
@@ -111,18 +113,26 @@ project/
 │   ├── embeddings.py
 │   ├── vector_store.py
 │   ├── retriever.py
+│   ├── retrieval_config.py
+│   ├── tool_registry.py
+│   ├── agent.py
 │   ├── prompts.py
-│   ├── tools.py
-│   └── agent.py
+│   └── citations.py
 │
 ├── models/
-│   └── schemas.py
+│   ├── schemas.py
+│   └── rag_models.py
+│
+├── tests/
+│   ├── __init__.py
+│   ├── conftest.py
+│   └── test_retriever.py
 │
 ├── storage/
 │   ├── uploads/
 │   └── chroma_langchain_db/
 │
-└── utils/
+├── utils/
 
 frontend/
 
@@ -185,10 +195,11 @@ Responsible for:
 - Loading
 - Chunking
 - Embeddings
-- Retrieval
+- Retrieval (strategy-based)
+- Tool registration
+- Agent orchestration
 - Prompt construction
-- Tool definitions
-- Agent execution
+- Citation building
 
 The RAG layer must never know about HTTP or React.
 
@@ -265,14 +276,17 @@ Agent
 ↓
 
 Chooses Tool
+(via Tool Registry)
 
 ↓
 
-Retriever Tool
+Retriever Tool (retrieve_context)
 
 ↓
 
-Retriever
+Retriever (Strategy Dispatch)
+├── Similarity
+└── MMR
 
 ↓
 
@@ -381,31 +395,41 @@ No retrieval logic.
 
 ## vector_store.py
 
-Responsible only for vector database operations.
+Responsible for:
+
+- Chroma client lifecycle
+- Similarity search with scores and metadata filtering
+- MMR search with scores and metadata filtering
+- All ChromaDB-specific logic (embedding calls, `maximal_marginal_relevance`, `_results_to_docs`)
 
 Examples:
 
 - add_documents()
-- delete_documents()
-- similarity_search()
+- delete_document()
 - similarity_search_with_scores()
+- similarity_search_with_scores_filtered()
+- mmr_search_with_scores()
 - list_documents()
+
+The vector store is the only module that imports Chroma or generates embeddings.
 
 ---
 
 ## retriever.py
 
-Responsible only for retrieval.
+Responsible only for retrieval orchestration.
 
 It should:
 
-- query the vector store
-- rank retrieved chunks
-- preserve retrieval metadata
+- select a retrieval strategy (similarity vs MMR)
+- call the Vector Store
+- build RetrievedChunk objects
 - return a RetrievalResult
 
 It must never:
 
+- import Chroma
+- generate embeddings
 - interact with the LLM
 - build prompts
 - build citations
@@ -449,9 +473,26 @@ It reuses the RetrievalResult produced earlier in the request.
 
 ---
 
-## tools.py
+## retrieval_config.py
 
-Defines all Agent tools.
+Defines the `RetrievalConfig` dataclass for configuring retrieval behavior.
+
+Fields:
+
+- top_k: int (default 4)
+- search_type: "similarity" | "mmr" (default "similarity")
+- score_threshold: float | None
+- fetch_k: int (default 20)
+- lambda_mult: float (default 0.5)
+- metadata_filter: dict | None
+
+Provides a `DEFAULT_RETRIEVAL_CONFIG` singleton.
+
+---
+
+## tool_registry.py
+
+Registers all Agent tools and provides them to the Agent.
 
 Current:
 
@@ -475,13 +516,14 @@ Tool implementations should remain thin and delegate business logic to the appro
 Responsible only for:
 
 - creating the LangChain agent
-- registering tools
+- registering tools via the Tool Registry
 - coordinating tool execution
+- assembling the ChatResult (answer + citations + tool_calls)
 - exposing a streaming interface
 
 The Agent:
 
-- selects tools
+- selects tools via LangChain tool-calling
 - consumes RetrievalResult
 - streams model output
 
@@ -541,7 +583,10 @@ Inside the RAG layer
 Agent
       │
       ▼
-Tools
+Tool Registry
+      │
+      ▼
+Tools (retrieve_context, etc.)
       │
       ▼
 Retriever
@@ -581,8 +626,6 @@ The architecture should allow adding:
 
 - Hybrid Search
 - Query Rewriting
-- MMR
-- Metadata Filtering
 - Reranking
 
 ## Agent
@@ -613,8 +656,9 @@ The following rules should not be violated without recording an architectural de
 - API endpoints must remain thin.
 - Business logic belongs in services.
 - Agent orchestration belongs inside the RAG layer.
-- Retrieval belongs inside retriever.py.
-- Tool definitions belong inside tools.py.
+- Retrieval orchestration belongs inside retriever.py.
+- Retrieval implementation (ChromaDB calls, embeddings) belongs inside vector_store.py.
+- Tool definitions belong inside tool_registry.py.
 - Prompt construction belongs inside prompts.py.
 - Storage must never contain business logic.
 - Every module should have one primary responsibility.

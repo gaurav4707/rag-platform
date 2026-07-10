@@ -21,7 +21,7 @@ Milestone 3 — Retrieval Intelligence
 **Overall Progress**
 
 ```text
-██████████████░░░░░░ 70%
+████████████████░░░░ 80%
 ```
 
 ---
@@ -32,8 +32,8 @@ Milestone 3 — Retrieval Intelligence
 |-----------|--------|
 | 1. Backend Foundation | ✅ Completed |
 | 2. Frontend Foundation | ✅ Completed |
-| 3. Retrieval Intelligence | 🚧 In Progress |
-| 4. Agent Foundations | ⏳ Planned |
+| 3. Retrieval Intelligence | 🚧 In Progress (MMR, metadata filtering done) |
+| 4. Agent Foundations | ✅ Completed |
 | 5. User Experience | ⏳ Planned |
 | 6. Advanced Agentic RAG | ⏳ Planned |
 
@@ -150,8 +150,8 @@ Improve answer quality before expanding the Agent.
 ### Retrieval
 
 - [ ] Hybrid Search
-- [ ] Maximum Marginal Relevance (MMR)
-- [ ] Metadata filtering
+- [x] Maximum Marginal Relevance (MMR)
+- [x] Metadata filtering
 - [ ] Query rewriting
 - [ ] Multi-query retrieval
 
@@ -183,15 +183,15 @@ Transform the current RAG pipeline into a robust Agentic RAG architecture.
 
 ### Agent
 
-- [ ] Stable agent implementation
+- [x] Stable agent implementation
 - [ ] Provider-independent agent layer
-- [ ] Tool registry
-- [ ] Tool execution tracing
-- [ ] Streaming tool events
+- [x] Tool registry
+- [x] Tool execution tracing
+- [x] Streaming tool events
 
 ### Initial Tools
 
-- [ ] retrieve_context
+- [x] retrieve_context
 
 ### Additional Tools
 
@@ -274,8 +274,6 @@ Future ideas intentionally postponed.
 - [ ] Cloud deployment
 - [ ] Docker
 - [ ] CI/CD
-- [ ] Unit tests
-- [ ] Integration tests
 
 ---
 
@@ -283,11 +281,10 @@ Future ideas intentionally postponed.
 
 Current focus:
 
-1. Stabilize the Agent implementation.
-2. Improve retrieval quality.
-3. Eliminate duplicate retrieval for citations.
-4. Introduce provider-independent agent abstractions.
-5. Build the foundation for additional Agent tools.
+1. Implement query rewriting.
+2. Implement hybrid search.
+3. Implement reranking.
+4. Add retrieval evaluation benchmarks.
 
 ---
 

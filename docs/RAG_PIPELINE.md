@@ -68,14 +68,17 @@ Agent
 ↓
 
 Tool Selection
+(via Tool Registry)
 
 ↓
 
-Retriever Tool
+Retriever Tool (retrieve_context)
 
 ↓
 
-Retriever
+Retriever (Strategy Dispatch)
+├── Similarity
+└── MMR
 
 ↓
 
@@ -321,11 +324,11 @@ The Agent determines which tools are needed to answer the request.
 Modules
 
 ```
-tools.py
+tool_registry.py / retriever.py
 
 ↓
 
-retriever.py
+retriever.py (Strategy Dispatch)
 
 ↓
 
@@ -342,7 +345,8 @@ The retrieval tool
 
 The retriever
 
-- queries the vector store
+- selects a retrieval strategy (similarity or MMR)
+- queries the vector store with optional metadata filtering
 - ranks results
 - preserves metadata
 - returns retrieved chunks with their scores
@@ -475,6 +479,7 @@ Agent
 ↓
 
 Tool Selection
+(via Tool Registry)
 
 ↓
 
@@ -482,7 +487,9 @@ retrieve_context
 
 ↓
 
-Retriever
+Retriever (Strategy Dispatch)
+├── Similarity
+└── MMR
 
 ↓
 
@@ -519,8 +526,6 @@ Streaming Response
 
 - Hybrid Search
 - Query Rewriting
-- Metadata Filtering
-- MMR
 - Multi-query Retrieval
 - Context Compression
 - Parent Document Retrieval
@@ -594,11 +599,14 @@ Embeddings
 
 Vector Store
 
-- Only stores and retrieves vectors.
+- Stores and retrieves vectors.
+- Owns all ChromaDB-specific logic including similarity search, MMR, and metadata filtering.
+- Never constructs prompts or performs orchestration.
 
 Retriever
 
-- Only performs retrieval.
+- Only performs retrieval orchestration.
+- Selects retrieval strategy (similarity or MMR).
 - Produces a RetrievalResult.
 - Never constructs prompts.
 

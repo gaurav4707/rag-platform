@@ -47,17 +47,25 @@ Implemented
 - Embeddings
 - ChromaDB integration
 - Semantic retrieval
+- Similarity search with metadata filtering
+- Maximum Marginal Relevance (MMR)
 - Streaming responses
 - Source citations
 - Document listing
 - Document deletion
 - Standardized API errors
+- Agent orchestration
+- Tool registration
+- Tool-based retrieval
+- Stable streaming tool execution
+- RetrievalConfig with strategy dispatch
 
 In Progress
 
-- Agent orchestration
-- Tool-based retrieval
-- Stable streaming tool execution
+- Query rewriting
+- Hybrid search
+- Reranking
+- Retrieval evaluation
 
 ---
 
@@ -192,12 +200,15 @@ Goal
 
 Improve retrieval quality before expanding agent capabilities.
 
-Deliverables
+Completed
+
+- Maximum Marginal Relevance (MMR)
+- Metadata filtering
+
+Planned
 
 - Better chunking strategies
-- Metadata filtering
 - Query rewriting
-- Maximum Marginal Relevance (MMR)
 - Hybrid retrieval
 - Reranking
 - Prompt improvements
@@ -211,12 +222,16 @@ Goal
 
 Transform the application into a true Agentic RAG platform.
 
-Deliverables
+Completed
 
-- Stable agent implementation
+- Agent implementation using LangChain tool-calling
 - Tool registry
 - Tool execution
 - Streaming tool calls
+- retrieve_context tool
+
+Planned
+
 - Provider-independent agent layer
 - Conversation state
 - Agent observability

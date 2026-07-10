@@ -860,6 +860,107 @@ This design keeps the retrieval pipeline modular while ensuring that all downstr
 
 ---
 
+# ADR-015: Encapsulation of Provider-Specific Retrieval Logic
+
+### Status
+
+Accepted
+
+---
+
+### Context
+
+Earlier versions of the retriever module directly imported and used ChromaDB-specific APIs including `Chroma`, `maximal_marginal_relevance`, `_results_to_docs`, and embedding generation via `embeddings.embed_query()`.
+
+The retriever had three concerns mixed into one module:
+
+- Retrieval orchestration (strategy selection, result construction)
+- Provider-specific implementation (Chroma queries, MMR, embedding calls)
+- Collection lifecycle management (`_collection` cache)
+
+This made it difficult to:
+
+- Test retrieval strategies independently of ChromaDB
+- Switch to a different vector database
+- Reason about responsibilities at a glance
+- Add new retrieval strategies without touching Chroma internals
+
+---
+
+### Decision
+
+Provider-specific retrieval logic is encapsulated entirely within `vector_store.py`.
+
+`retriever.py` is responsible only for:
+
+- Selecting a retrieval strategy (similarity or MMR)
+- Calling the Vector Store
+- Building `RetrievedChunk` and `RetrievalResult`
+
+`vector_store.py` is responsible for:
+
+- Chroma client lifecycle
+- Similarity search with metadata filtering
+- MMR search with metadata filtering
+- All Chroma/embedding calls
+
+The `retriever.py` module no longer:
+
+- Imports `Chroma`
+- Generates embeddings
+- Calls `_collection.query()`
+- Imports `_results_to_docs` or `maximal_marginal_relevance`
+
+---
+
+### Alternatives Considered
+
+#### Keep retrieval logic in retriever
+
+Simpler, but tightly couples orchestration to ChromaDB internals.
+
+Rejected because it violates single-responsibility and makes provider swaps costly.
+
+#### Introduce a separate retrieval provider abstraction
+
+A full `BaseRetrievalProvider` interface with Chroma implementation. More formally correct but introduces abstraction overhead without a current need for multiple providers.
+
+Deferred until a second provider is introduced.
+
+#### Move only MMR logic to vector_store
+
+Incomplete solution — would still leave similarity search and embedding calls in the retriever.
+
+Rejected.
+
+---
+
+### Consequences
+
+#### Advantages
+
+- Clear separation of orchestration from implementation
+- Provider-specific code is isolated in one file
+- Simplified testing — retriever tests can mock the vector store
+- Adding a new retrieval strategy only requires changes in retriever.py (dispatch) and vector_store.py (implementation)
+- Switching vector databases only requires changing vector_store.py
+
+#### Trade-offs
+
+- The vector_store module grows larger as more strategies are added
+- Tests that verify internals (e.g., embedding calls, MMR parameter passing) must target vector_store namespaces
+- Re-exporting `embeddings` and `maximal_marginal_relevance` from `retriever.py` is required for backward compatibility with existing test patches
+
+These trade-offs are acceptable because the module boundary is clear and the vector store is the natural home for provider-specific logic.
+
+---
+
+### Revisit When
+
+A second vector database is introduced and a formal provider abstraction is warranted.
+
+---
+
 # Future Decisions
 
 This section will grow throughout the project.

@@ -4,13 +4,13 @@
 
 ## Status
 
-- **Phase:** Planning & Architecture (per `docs/TODO.md`). Milestone 1 (Backend) is **not started**.
-- Architecture docs (`ARCHITECTURE.md`, `API_SPEC.md`) describe a **planned** state. The current codebase is simpler and has **drifted** from the docs.
+- **Phase:** Milestone 3 — Retrieval Intelligence (per `docs/TODO.md`). Milestones 1 and 2 are **completed**.
+- Architecture docs (`ARCHITECTURE.md`, `RAG_PIPELINE.md`, `DECISIONS.md`) reflect the current implementation.
 
 ## Quick Start
 
 ```sh
-source venv/bin/activate && python backend/app.py
+source .venv/bin/activate && python backend/app.py
 ```
 
 Requires `GOOGLE_API_KEY` in the environment (Gemini models for embeddings + LLM).
@@ -20,17 +20,6 @@ Requires `GOOGLE_API_KEY` in the environment (Gemini models for embeddings + LLM
 - `backend/rag/embeddings.py:5` — string literal is broken (`"EMBEDDING_MODEL` instead of `EMBEDDING_MODEL`)
 - `backend/rag/vector_store.py:10` — `CHROMA_DB_DIR` is imported twice on the same line
 
-## Architecture Drift (current vs planned docs)
-
-| Area          | Docs say                                 | Actually is                                            |
-| ------------- | ---------------------------------------- | ------------------------------------------------------ |
-| Entry point   | FastAPI app                              | `backend/app.py` — CLI script using langchain directly |
-| API layer     | `backend/api/` dir                       | Does not exist                                         |
-| Models layer  | `backend/models/` dir                    | Does not exist                                         |
-| Utils layer   | `backend/utils/` dir                     | Does not exist                                         |
-| Frontend      | React app                                | Does not exist                                         |
-| Service layer | `document_service.py`, `chat_service.py` | Only `rag_service.py` (stub)                           |
-
 ## Must-Read Before Changes
 
 - `docs/ARCHITECTURE.md` — layered architecture, module responsibilities, dependency rules
@@ -39,9 +28,10 @@ Requires `GOOGLE_API_KEY` in the environment (Gemini models for embeddings + LLM
 
 ## Tooling
 
-- **No linting, typechecking, formatting, or test infrastructure** is configured.
+- **No linting, typechecking, or formatting** infrastructure is configured.
+- Tests use `pytest` (run from project root: `source .venv/bin/activate && python -m pytest`).
 - All verification is manual: run `backend/app.py` and inspect output.
-- Adding a linter/formatter/tester would be valuable.
+- Adding a linter/formatter would be valuable.
 
 ## Conventions
 
