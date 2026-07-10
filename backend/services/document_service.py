@@ -9,7 +9,9 @@ from backend.rag.vector_store import (
     delete_document as delete_vector_document,
     find_document_by_hash,
     list_documents as list_vector_documents,
+    get_all_documents,
 )
+from backend.rag.bm25 import rebuild as rebuild_bm25_index, refresh as refresh_bm25_index, invalidate as invalidate_bm25_index
 from backend.api.errors import AppError, ERROR_CODES, status
 
 
@@ -63,6 +65,14 @@ def process_upload(file_content: bytes, original_filename: str) -> dict:
             split.metadata["chunk_index"] = i
 
         add_documents(splits)
+
+        # Rebuild BM25 index with all documents
+        try:
+            all_docs = get_all_documents()
+            rebuild_bm25_index(all_docs)
+        except Exception as e:
+            # Log but don't fail the upload if BM25 rebuild fails
+            print(f"Warning: BM25 index rebuild failed: {e}")
 
     except AppError:
         raise
@@ -125,6 +135,13 @@ def delete_document(document_id: str) -> None:
             ERROR_CODES["VECTOR_STORE_ERROR"],
             "Failed to delete document vectors.",
         )
+
+    # Rebuild BM25 index after deletion
+    try:
+        all_docs = get_all_documents()
+        rebuild_bm25_index(all_docs)
+    except Exception as e:
+        print(f"Warning: BM25 index rebuild failed after deletion: {e}")
 
     saved_path = UPLOAD_DIR / f"{document_id}.pdf"
     if saved_path.exists():

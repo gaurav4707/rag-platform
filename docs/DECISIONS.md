@@ -970,7 +970,7 @@ Potential future decisions include:
 - Conversation memory strategy
 - Agent planning strategy
 - Tool selection policies
-- Hybrid retrieval
+- Hybrid retrieval (implemented - see ADR-016)
 - Reranking models
 - OCR integration
 - Multi-agent workflows
@@ -978,6 +978,154 @@ Potential future decisions include:
 - Deployment architecture
 - Caching strategy
 - Observability and tracing
+
+---
+
+# ADR-016
+
+## Title
+
+Hybrid Retrieval with Reciprocal Rank Fusion
+
+**Status**
+
+Accepted
+
+### Context
+
+The initial retrieval implementation used only dense vector similarity search (or MMR). While effective for semantic matching, dense retrieval alone struggles with:
+
+- Exact keyword matches (e.g., specific technical terms, product names, error codes)
+- Short queries where semantic meaning is ambiguous
+- Cases where users expect literal text matching
+
+Lexical search (BM25) complements dense retrieval by excelling at exact term matching while dense retrieval handles semantic similarity.
+
+The challenge was combining both approaches effectively while maintaining the single-retrieval-per-request invariant.
+
+---
+
+### Decision
+
+Implement Hybrid Retrieval as a first-class retrieval strategy alongside Similarity and MMR.
+
+**Architecture:**
+
+1. **Retrieval Strategy Pattern**: Introduced `retrieval_strategies.py` with `RetrievalStrategy` abstract base class and concrete implementations:
+   - `SimilarityStrategy`: Dense vector similarity search
+   - `MMRStrategy`: Maximum Marginal Relevance search
+   - `HybridStrategy`: Combined dense + BM25 with Reciprocal Rank Fusion (RRF)
+
+2. **Reciprocal Rank Fusion (RRF)**: Used to merge dense and BM25 results.
+   - Formula: `score = Σ 1 / (k + rank)` for each result list
+   - Default `k = 60` (RRF_K in RetrievalConfig)
+   - Deduplication by stable chunk identifier `(document_id, chunk_index)`
+
+3. **BM25 Implementation**: In-memory only using `rank-bm25`
+   - Built from Vector Store documents on demand
+   - No persistence - ChromaDB remains the single source of truth
+   - Thread-safe rebuild/refresh/invalidate operations
+   - Rebuilt after document upload/deletion
+
+4. **Centralized Configuration**: Extended `RetrievalConfig` with hybrid-specific parameters:
+   - `search_type: "similarity" | "mmr" | "hybrid"` (default: "hybrid")
+   - `dense_top_k: int` (default: 10)
+   - `bm25_top_k: int` (default: 10)
+   - `final_top_k: int` (default: 6)
+   - `rrf_k: int` (default: 60)
+   - `hybrid_enabled: bool` (default: True)
+
+5. **Retrieval Metadata**: `RetrievalResult` now includes optional `retrieval_metadata` dict containing:
+   ```python
+   {
+       "strategy": "hybrid",
+       "dense_results": 10,
+       "bm25_results": 10,
+       "fused_results": 15,
+       "duplicates_removed": 5,
+       "fusion": "rrf",
+       "rrf_k": 60,
+       "final_results": 6,
+   }
+   ```
+
+---
+
+### Alternatives Considered
+
+#### Weighted Score Combination
+
+Linear combination of dense and BM25 scores: `score = α * dense_score + β * bm25_score`.
+
+Rejected because:
+- Requires score normalization across different scales
+- Weight tuning is brittle and query-dependent
+- RRF is parameter-free and more robust
+
+#### Interleaved Merging
+
+Alternate dense and BM25 results (1st dense, 1st BM25, 2nd dense, 2nd BM25...).
+
+Rejected because:
+- Doesn't account for relative ranking quality
+- No score-based ordering
+
+#### Separate Hybrid Retrieval Module
+
+Initially implemented as `hybrid_retriever.py` with a `hybrid_retrieve()` function.
+
+Refactored to Strategy Pattern because:
+- Strategy Pattern allows adding new strategies (Query Rewriting, Reranking) without modifying existing code
+- Consistent interface for all retrieval methods
+- Better testability and separation of concerns
+
+#### External Search Service (Elasticsearch, OpenSearch)
+
+Rejected because:
+- Adds operational complexity
+- Not necessary for single-user local application
+- BM25 via `rank-bm25` is sufficient for current scale
+
+---
+
+### Consequences
+
+#### Advantages
+
+- **Better recall**: Combines semantic and lexical matching
+- **Robust ranking**: RRF is parameter-free and handles score scale differences
+- **Extensible architecture**: New strategies (Query Rewriting, Reranking) can be added as Strategy implementations
+- **Single retrieval invariant preserved**: Hybrid is one logical retrieval composed of multiple internal strategies
+- **Debugging support**: Retrieval metadata provides visibility into the fusion process
+- **Provider-agnostic**: BM25 runs locally; dense retrieval uses existing Vector Store abstraction
+
+#### Trade-offs
+
+- **Increased latency**: Two retrieval operations (dense + BM25) per request
+- **Memory overhead**: BM25 index held in memory
+- **Configuration complexity**: More retrieval parameters to tune
+- **Index rebuild required**: BM25 must be refreshed when documents change
+
+These trade-offs are acceptable because:
+- Latency is manageable for single-user local use
+- Memory usage is proportional to corpus size (typically < 100MB)
+- Default parameters work well out of the box
+- Rebuild is triggered automatically on document changes
+
+---
+
+### Revisit When
+
+- Reranking is implemented (should operate on RetrievalResult, not trigger new searches)
+- Query rewriting is added (should run before strategy selection)
+- Multi-vector retrieval is needed (e.g., ColBERT, SPLADE)
+- Production-scale requirements emerge
+
+---
+
+### Revisit When
+
+A second vector database is introduced and a formal provider abstraction is warranted.
 
 ---
 

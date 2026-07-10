@@ -7,7 +7,12 @@ from backend.rag.vector_store import (
     similarity_search_with_scores_filtered,
 )
 from backend.rag.query_rewriter import rewrite_query
+from backend.rag.retrieval_strategies import get_strategy
 from backend.models.rag_models import RetrievalResult, RetrievedChunk
+
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 def _run_similarity_search(
@@ -81,12 +86,20 @@ def _log_retrieval_details(
     original_query: str,
     retrieval_query: str,
     chunks: list[RetrievedChunk],
+    retrieval_metadata: dict | None = None,
 ) -> None:
     """Log detailed retrieval information for debugging."""
-    print("\n=== Retrieval ===")
-    print(f"Original Query : {original_query}")
-    print(f"Retrieval Query: {retrieval_query}")
-    print(f"Chunks Retrieved: {len(chunks)}")
+    logger.debug("\n=== Retrieval ===")
+    logger.debug("Original Query : %s", original_query)
+    logger.debug("Retrieval Query: %s", retrieval_query)
+    logger.debug("Chunks Retrieved: %d", len(chunks))
+
+    if retrieval_metadata:
+        logger.debug("Strategy: %s", retrieval_metadata.get("strategy", "unknown"))
+        logger.debug("Dense Results: %d", retrieval_metadata.get("dense_results", 0))
+        logger.debug("BM25 Results: %d", retrieval_metadata.get("bm25_results", 0))
+        logger.debug("Duplicates Removed: %d", retrieval_metadata.get("duplicates_removed", 0))
+        logger.debug("Fusion: %s", retrieval_metadata.get("fusion", "none"))
 
     for i, chunk in enumerate(chunks):
         meta = chunk.document.metadata
@@ -98,13 +111,16 @@ def _log_retrieval_details(
 
         preview = chunk.document.page_content[:300].replace("\n", " ")
 
-        print(f"\n  Chunk {i + 1}:")
-        print(f"    Document ID : {doc_id}")
-        print(f"    Filename    : {filename}")
-        print(f"    Page        : {page}")
-        print(f"    Chunk Index : {chunk_idx}")
-        print(f"    Score       : {score:.4f}")
-        print(f"    Preview     : {preview}")
+        logger.debug(
+            "  Chunk %d: doc_id=%s, filename=%s, page=%s, chunk_index=%s, score=%.4f, preview=%s",
+            i + 1,
+            doc_id,
+            filename,
+            page,
+            chunk_idx,
+            score,
+            preview,
+        )
 
 
 @tool(response_format="content_and_artifact")
@@ -119,30 +135,27 @@ def retrieve_context(
     try:
         retrieval_query = rewrite_query(query, config.query_rewrite)
     except Exception:
-        # Fall back to original query if rewriting fails
+        logger.warning("Query rewrite failed, using original query")
         retrieval_query = query
 
-    results = _run_retrieval(retrieval_query, config)
+    strategy = get_strategy(config.search_type, config.hybrid_enabled)
 
-    # Deduplicate chunks by stable identifier (document_id, chunk_index)
-    results = _deduplicate_chunks(results)
-
-    chunks = [
-        RetrievedChunk(document=doc, score=score)
-        for doc, score in results
-    ]
-
-    retrieval_result = RetrievalResult(
+    retrieval_result = strategy.retrieve(
+        query=retrieval_query,
         original_query=query,
-        retrieval_query=retrieval_query,
-        chunks=chunks,
+        config=config,
     )
 
     serialized = "\n\n".join(
         f"Source: {chunk.document.metadata}\nContent: {chunk.document.page_content}"
-        for chunk in chunks
+        for chunk in retrieval_result.chunks
     )
 
-    _log_retrieval_details(query, retrieval_query, chunks)
+    _log_retrieval_details(
+        query,
+        retrieval_query,
+        retrieval_result.chunks,
+        retrieval_result.retrieval_metadata,
+    )
 
     return serialized, retrieval_result

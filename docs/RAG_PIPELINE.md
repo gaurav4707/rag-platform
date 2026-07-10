@@ -42,6 +42,10 @@ Embeddings
 ↓
 
 Vector Store
+
+↓
+
+BM25 Index (rebuilt in-memory)
 ```
 
 ---
@@ -77,8 +81,11 @@ Retriever Tool (retrieve_context)
 ↓
 
 Retriever (Strategy Dispatch)
-├── Similarity
-└── MMR
+├── SimilarityStrategy
+├── MMRStrategy
+├── HybridStrategy
+├── QueryRewriteStrategy (future)
+└── RerankStrategy (future)
 
 ↓
 
@@ -90,7 +97,9 @@ RetrievalResult
       │
       ├────────────► Prompt Builder
       │
-      └────────────► Citation Builder
+      ├────────────► Citation Builder
+      │
+      └────────────► Agent
 
 ↓
 
@@ -237,7 +246,25 @@ Stored metadata includes
 
 ---
 
-## Step 7 — Verify Indexing
+## Step 7 — Rebuild BM25 Index
+
+Module
+
+```
+bm25.py / hybrid_retriever.py
+```
+
+Responsibilities
+
+- Fetch all documents from Vector Store
+- Build in-memory BM25 index
+- Called after successful vector storage
+
+The BM25 index is ephemeral - ChromaDB remains the single source of truth.
+
+---
+
+## Step 8 — Verify Indexing
 
 Return
 
@@ -332,34 +359,47 @@ retriever.py (Strategy Dispatch)
 
 ↓
 
-vector_store.py
+retrieval_strategies.py
+
+↓
+
+vector_store.py + bm25.py
 ```
 
 Responsibilities
 
-The retrieval tool
+The retrieval tool:
 
 - receives the user query
-- invokes the retriever
+- optionally rewrites the query (future)
+- invokes the retriever with a RetrievalConfig
 - returns a RetrievalResult
 
-The retriever
+The retriever:
 
-- selects a retrieval strategy (similarity or MMR)
-- queries the vector store with optional metadata filtering
-- ranks results
-- preserves metadata
-- returns retrieved chunks with their scores
+- selects a retrieval strategy via `get_strategy(search_type)`
+- delegates to the strategy's `retrieve()` method
+- strategies handle vector store and BM25 queries
+- returns a RetrievalResult with retrieval_metadata
 
 Example
 
 ```python
 RetrievalResult(
-    query="How does RAG work?",
+    original_query="How does RAG work?",
+    retrieval_query="How does RAG work?",
     chunks=[
         RetrievedChunk(...),
         RetrievedChunk(...),
     ],
+    retrieval_metadata={
+        "strategy": "hybrid",
+        "dense_results": 10,
+        "bm25_results": 10,
+        "duplicates_removed": 4,
+        "fusion": "rrf",
+        "rrf_k": 60,
+    },
 )
 ```
 
@@ -488,12 +528,15 @@ retrieve_context
 ↓
 
 Retriever (Strategy Dispatch)
-├── Similarity
-└── MMR
+├── SimilarityStrategy
+├── MMRStrategy
+├── HybridStrategy
+├── QueryRewriteStrategy (future)
+└── RerankStrategy (future)
 
 ↓
 
-Vector Store
+Vector Store + BM25
 
 ↓
 
@@ -524,7 +567,7 @@ Streaming Response
 
 ## Retrieval
 
-- Hybrid Search
+- Hybrid Search (implemented)
 - Query Rewriting
 - Multi-query Retrieval
 - Context Compression
@@ -535,7 +578,7 @@ Streaming Response
 ## Ranking
 
 - Cross Encoder Reranking
-- Reciprocal Rank Fusion
+- Reciprocal Rank Fusion (implemented for Hybrid)
 - Score Thresholding
 
 ---
@@ -603,10 +646,24 @@ Vector Store
 - Owns all ChromaDB-specific logic including similarity search, MMR, and metadata filtering.
 - Never constructs prompts or performs orchestration.
 
+BM25
+
+- Provides in-memory lexical retrieval.
+- Thread-safe index management.
+- Rebuilt from Vector Store on document changes.
+- Never persists to disk.
+
+Retrieval Strategies
+
+- Encapsulate specific retrieval algorithms.
+- Selected via Strategy Pattern.
+- Return RetrievalResult with metadata.
+- New strategies can be added without modifying existing code.
+
 Retriever
 
 - Only performs retrieval orchestration.
-- Selects retrieval strategy (similarity or MMR).
+- Selects retrieval strategy.
 - Produces a RetrievalResult.
 - Never constructs prompts.
 
@@ -633,7 +690,7 @@ Responsibilities should never overlap.
 
 ---
 
-# Retrieval Invariant
+# 9. Retrieval Invariant
 
 Exactly one retrieval operation should occur for each user request.
 
@@ -649,7 +706,7 @@ Future retrieval enhancements (reranking, hybrid search, metadata filtering, que
 
 ---
 
-# 9. Debugging Strategy
+# 10. Debugging Strategy
 
 Debug the pipeline in execution order.
 
@@ -668,7 +725,7 @@ Investigate one stage at a time.
 
 ---
 
-# 10. Future Vision
+# 11. Future Vision
 
 The pipeline should evolve into a general-purpose Agentic RAG engine.
 

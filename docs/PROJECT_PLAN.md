@@ -59,11 +59,14 @@ Implemented
 - Tool-based retrieval
 - Stable streaming tool execution
 - RetrievalConfig with strategy dispatch
+- **Hybrid Retrieval (Dense + BM25 with RRF)**
+- **Retrieval Strategy Pattern (Similarity, MMR, Hybrid)**
+- **Centralized Retrieval Configuration**
+- **Retrieval Metadata for debugging/evaluation**
 
 In Progress
 
 - Query rewriting
-- Hybrid search
 - Reranking
 - Retrieval evaluation
 
@@ -201,15 +204,19 @@ Goal
 Improve retrieval quality before expanding agent capabilities.
 
 Completed
+
 - Retrieval Configuration
 - Maximum Marginal Relevance (MMR)
 - Metadata filtering
+- **Hybrid Retrieval (Dense + BM25 with Reciprocal Rank Fusion)**
+- **Retrieval Strategy Pattern (Similarity, MMR, Hybrid)**
+- **Centralized Retrieval Configuration in RetrievalConfig**
+- **Retrieval Metadata for debugging and evaluation**
 
 Planned
 
 - Better chunking strategies
 - Query rewriting
-- Hybrid retrieval
 - Reranking
 - Prompt improvements
 - Retrieval evaluation

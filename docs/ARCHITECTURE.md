@@ -35,37 +35,42 @@ Every future feature should follow this architecture unless an explicit architec
                     |     React Frontend   |
                     +----------+-----------+
                                |
-                        HTTP / Streaming
+                         HTTP / Streaming
                                |
                     +----------v-----------+
                     |      FastAPI API     |
                     +----------+-----------+
                                |
-                      Application Services
+                       Application Services
                                |
-          +--------------------+--------------------+
-          |                                         |
-   Document Service                          Chat Service
-          |                                         |
-          +--------------------+--------------------+
+           +-------------------+-------------------+
+           |                                       |
+    Document Service                          Chat Service
+           |                                       |
+           +-------------------+-------------------+
                                |
                          Agentic RAG Engine
                                |
-               +---------------+---------------+
-               |                               |
-            Agent                       Prompt Builder
-               |
-        Tool Registry
-               |
-    +----------+-----------+----------------+
-    |                      |                |
-Retriever Tool       Future Tools       Future Tools
-(retrieve_context)   (Web Search,       (Calculator,
-                     Metadata, etc.)    Summarizer...)
+                 +-------------+-------------+
+                 |                           |
+              Agent                       Prompt Builder
+                 |
+           Tool Registry
+                 |
+    +------------+------------+--------------+
+    |                         |               |
+Retriever Tool           Future Tools      Future Tools
+(retrieve_context)      (Web Search,       (Calculator,
+                        Metadata, etc.)    Summarizer...)
     |
 Retriever (Strategy Dispatch)
     |
-Vector Store (Similarity / MMR / Metadata Filtering)
++---+---+---+---+---+
+|   |   |   |   |   |
+▼   ▼   ▼   ▼   ▼   ▼
+Similarity MMR Hybrid Query Rewrite Rerank Future
+    |
+Vector Store (ChromaDB)
     |
     RetrievalResult
     │
@@ -114,6 +119,9 @@ project/
 │   ├── vector_store.py
 │   ├── retriever.py
 │   ├── retrieval_config.py
+│   ├── retrieval_strategies.py
+│   ├── bm25.py
+│   ├── hybrid_retriever.py
 │   ├── tool_registry.py
 │   ├── agent.py
 │   ├── prompts.py
@@ -133,7 +141,7 @@ project/
 │   └── chroma_langchain_db/
 │
 ├── utils/
-
+│
 frontend/
 
 docs/
@@ -252,6 +260,10 @@ Embeddings
 ↓
 
 Vector Store
+
+↓
+
+BM25 Index (rebuilt in-memory)
 ```
 
 ---
@@ -285,8 +297,11 @@ Retriever Tool (retrieve_context)
 ↓
 
 Retriever (Strategy Dispatch)
-├── Similarity
-└── MMR
+├── SimilarityStrategy
+├── MMRStrategy
+├── HybridStrategy
+├── QueryRewriteStrategy (future)
+└── RerankStrategy (future)
 
 ↓
 
@@ -364,6 +379,10 @@ Delete PDF
 
 ↓
 
+BM25 Index (rebuilt in-memory)
+
+↓
+
 Response
 ```
 
@@ -401,6 +420,7 @@ Responsible for:
 - Similarity search with scores and metadata filtering
 - MMR search with scores and metadata filtering
 - All ChromaDB-specific logic (embedding calls, `maximal_marginal_relevance`, `_results_to_docs`)
+- Retrieving all documents for BM25 index building
 
 Examples:
 
@@ -409,9 +429,42 @@ Examples:
 - similarity_search_with_scores()
 - similarity_search_with_scores_filtered()
 - mmr_search_with_scores()
+- get_all_documents()
 - list_documents()
 
 The vector store is the only module that imports Chroma or generates embeddings.
+
+---
+
+## bm25.py
+
+Responsible for:
+
+- In-memory BM25 index (rank-bm25)
+- Building index from Vector Store documents
+- Lexical search with BM25 scoring
+- Thread-safe index management
+- Index rebuild, refresh, and invalidation
+
+No persistence - ChromaDB remains the single source of truth.
+
+---
+
+## retrieval_strategies.py
+
+Implements the Strategy Pattern for retrieval:
+
+- **SimilarityStrategy**: Dense vector similarity search
+- **MMRStrategy**: Maximum Marginal Relevance search
+- **HybridStrategy**: Dense + BM25 with Reciprocal Rank Fusion (RRF)
+
+Each strategy:
+- Takes a query and RetrievalConfig
+- Returns a RetrievalResult with retrieval_metadata
+
+Future strategies:
+- QueryRewriteStrategy
+- RerankStrategy
 
 ---
 
@@ -421,20 +474,57 @@ Responsible only for retrieval orchestration.
 
 It should:
 
-- select a retrieval strategy (similarity vs MMR)
-- call the Vector Store
-- build RetrievedChunk objects
-- return a RetrievalResult
+- Select a retrieval strategy via `get_strategy()`
+- Call the strategy's `retrieve()` method
+- Return a RetrievalResult
 
 It must never:
 
-- import Chroma
-- generate embeddings
-- interact with the LLM
-- build prompts
-- build citations
+- Import Chroma
+- Generate embeddings
+- Interact with the LLM
+- Build prompts
+- Build citations
 
 The RetrievalResult is the single source of truth for downstream components.
+
+---
+
+## retrieval_config.py
+
+Defines the `RetrievalConfig` dataclass for configuring retrieval behavior.
+
+Fields:
+
+- top_k: int (default 4)
+- search_type: "similarity" | "mmr" | "hybrid" (default "hybrid")
+- score_threshold: float | None
+- fetch_k: int (default 20)
+- lambda_mult: float (default 0.5)
+- metadata_filter: dict | None
+- query_rewrite: "none" | "llm" (default "none")
+
+Hybrid-specific:
+- dense_top_k: int (default 10)
+- bm25_top_k: int (default 10)
+- final_top_k: int (default 6)
+- rrf_k: int (default 60)
+- hybrid_enabled: bool (default True)
+
+Provides a `DEFAULT_RETRIEVAL_CONFIG` singleton.
+
+---
+
+## hybrid_retriever.py
+
+Utility module for BM25 index management:
+
+- rebuild_bm25_index()
+- refresh_bm25_index()
+- invalidate_bm25_index()
+- get_bm25_stats()
+
+Actual hybrid retrieval logic is in `retrieval_strategies.py` (HybridStrategy).
 
 ---
 
@@ -470,23 +560,6 @@ Produces:
 The Citation Builder never queries the vector store.
 
 It reuses the RetrievalResult produced earlier in the request.
-
----
-
-## retrieval_config.py
-
-Defines the `RetrievalConfig` dataclass for configuring retrieval behavior.
-
-Fields:
-
-- top_k: int (default 4)
-- search_type: "similarity" | "mmr" (default "similarity")
-- score_threshold: float | None
-- fetch_k: int (default 20)
-- lambda_mult: float (default 0.5)
-- metadata_filter: dict | None
-
-Provides a `DEFAULT_RETRIEVAL_CONFIG` singleton.
 
 ---
 
@@ -542,6 +615,17 @@ Responsible for standardized API errors.
 The RetrievalResult is a shared data model produced by the retriever.
 
 It represents the outcome of a single retrieval operation and is reused throughout the request lifecycle.
+
+It now includes optional `retrieval_metadata` for debugging and evaluation:
+
+```python
+@dataclass
+class RetrievalResult:
+    original_query: str
+    retrieval_query: str
+    chunks: list[RetrievedChunk]
+    retrieval_metadata: dict = field(default_factory=dict)  # strategy, counts, etc.
+```
 
 Consumers include:
 
@@ -624,7 +708,7 @@ The architecture should allow adding:
 
 ## Retrieval
 
-- Hybrid Search
+- Hybrid Search (implemented)
 - Query Rewriting
 - Reranking
 
@@ -658,6 +742,7 @@ The following rules should not be violated without recording an architectural de
 - Agent orchestration belongs inside the RAG layer.
 - Retrieval orchestration belongs inside retriever.py.
 - Retrieval implementation (ChromaDB calls, embeddings) belongs inside vector_store.py.
+- BM25 lexical retrieval belongs inside bm25.py.
 - Tool definitions belong inside tool_registry.py.
 - Prompt construction belongs inside prompts.py.
 - Storage must never contain business logic.
@@ -665,3 +750,5 @@ The following rules should not be violated without recording an architectural de
 - New capabilities should extend the architecture instead of bypassing it.
 - Exactly one retrieval operation should occur for each user request.
 - All downstream components must reuse the RetrievalResult instead of issuing additional vector store queries.
+- Retrieval strategies are selected via the Strategy Pattern - new strategies can be added without modifying existing code.
+- BM25 index is in-memory only; ChromaDB remains the single source of truth.

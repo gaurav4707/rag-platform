@@ -1,5 +1,6 @@
 from langchain_chroma import Chroma
 from langchain_chroma.vectorstores import _results_to_docs, maximal_marginal_relevance
+from langchain_core.documents import Document
 import numpy as np
 
 from backend.config import CHROMA_COLLECTION_NAME, CHROMA_DB_DIR
@@ -15,6 +16,7 @@ __all__ = [
     "similarity_search_with_scores_filtered",
     "mmr_search_with_scores",
     "maximal_marginal_relevance",
+    "get_all_documents",
 ]
 
 _collection: Chroma | None = None
@@ -145,3 +147,21 @@ def mmr_search_with_scores(
         (candidates[i], float(query_distances[i]))
         for i in mmr_selected
     ]
+
+
+def get_all_documents() -> list[Document]:
+    """Get all documents from the vector store.
+
+    Returns:
+        List of all Document objects in the collection.
+    """
+    collection = _get_collection()
+    all_data = collection.get(include=["documents", "metadatas"])
+    documents = all_data.get("documents", [])
+    metadatas = all_data.get("metadatas", [])
+
+    result = []
+    for doc_text, metadata in zip(documents, metadatas, strict=False):
+        result.append(Document(page_content=doc_text, metadata=metadata))
+
+    return result
