@@ -38,7 +38,6 @@ CHROMA_COLLECTION_NAME = "example_collection"
 # Models
 # -----------------------------------------------------------------------------
 
-LLM_MODEL = "groq:llama-3.1-8b-instant"
 EMBEDDING_MODEL = "BAAI/bge-base-en-v1.5"
 
 # -----------------------------------------------------------------------------

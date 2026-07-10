@@ -1,21 +1,15 @@
 from langchain.agents import create_agent
 from langchain_groq import ChatGroq
 
-from backend.config import LLM_MODEL
 from backend.models.rag_models import ChatResult
 from backend.rag.tool_registry import get_tools
 from backend.rag.prompts import system_prompt
 from backend.rag.citations import build_sources
+from backend.rag.llm import get_llm
 
 
 def _build_agent():
-    llm = ChatGroq(
-        model=LLM_MODEL,
-        max_tokens=None,
-        reasoning_format="parsed",
-        timeout=None,
-        max_retries=2,
-    )
+    llm = get_llm()
     return create_agent(llm, tools=get_tools(), middleware=[system_prompt])
 
 

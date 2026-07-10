@@ -10,6 +10,7 @@ class RetrievalConfig:
     fetch_k: int = 20
     lambda_mult: float = 0.5
     metadata_filter: dict[str, Any] | None = None
+    query_rewrite: Literal["none", "llm"] = "none"
 
 
 DEFAULT_RETRIEVAL_CONFIG = RetrievalConfig()

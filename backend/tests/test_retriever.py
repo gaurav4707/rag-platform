@@ -8,6 +8,7 @@ Covers:
 - Configuration parameters are respected
 - Top-level retrieve_context tool
 - Integration test with temporary ChromaDB instance
+- Query rewriting (none and llm strategies)
 """
 
 from __future__ import annotations
@@ -98,15 +99,17 @@ class TestRetrievalConfig:
         assert config.score_threshold is None
         assert config.fetch_k == 20
         assert config.lambda_mult == 0.5
+        assert config.query_rewrite == "none"
 
     def test_custom_values(self):
         config = RetrievalConfig(
-            top_k=8, search_type="mmr", fetch_k=40, lambda_mult=0.3
+            top_k=8, search_type="mmr", fetch_k=40, lambda_mult=0.3, query_rewrite="llm"
         )
         assert config.top_k == 8
         assert config.search_type == "mmr"
         assert config.fetch_k == 40
         assert config.lambda_mult == 0.3
+        assert config.query_rewrite == "llm"
 
     def test_config_is_frozen(self):
         config = RetrievalConfig()
@@ -116,6 +119,10 @@ class TestRetrievalConfig:
     def test_valid_search_types(self):
         RetrievalConfig(search_type="similarity")
         RetrievalConfig(search_type="mmr")
+
+    def test_valid_query_rewrite_types(self):
+        RetrievalConfig(query_rewrite="none")
+        RetrievalConfig(query_rewrite="llm")
 
 
 # ======================================================================
@@ -230,8 +237,7 @@ class TestMMRRetrieval:
                 (Document(page_content="A", metadata={}), 0.1),
                 (Document(page_content="B", metadata={}), 0.2),
             ]
-            with patch("backend.rag.retriever.embeddings.embed_query", return_value=[1.0, 0.0, 0.5, 0.5]):
-                results = _run_mmr_search("query", config)
+            results = _run_mmr_search("query", config)
         assert len(results) == 2
 
     def test_top_k_respected(self, mmr_query_result):
@@ -240,8 +246,7 @@ class TestMMRRetrieval:
         config = RetrievalConfig(top_k=1, search_type="mmr", fetch_k=4)
         with patch("backend.rag.retriever.mmr_search_with_scores") as mock_mmr:
             mock_mmr.return_value = [(Document(page_content="A", metadata={}), 0.1)]
-            with patch("backend.rag.retriever.embeddings.embed_query", return_value=[1.0, 0.0, 0.5, 0.5]):
-                results = _run_mmr_search("query", config)
+            results = _run_mmr_search("query", config)
         assert len(results) == 1
 
     def test_fetch_k_respected(self, mmr_query_result):
@@ -253,8 +258,7 @@ class TestMMRRetrieval:
                 (Document(page_content="A", metadata={}), 0.1),
                 (Document(page_content="B", metadata={}), 0.2),
             ]
-            with patch("backend.rag.retriever.embeddings.embed_query", return_value=[1.0, 0.0, 0.5, 0.5]):
-                _run_mmr_search("query", config)
+            _run_mmr_search("query", config)
             mock_mmr.assert_called_once()
             assert mock_mmr.call_args[1]["fetch_k"] == 50
 
@@ -267,8 +271,7 @@ class TestMMRRetrieval:
                 (Document(page_content="A", metadata={}), 0.1),
                 (Document(page_content="B", metadata={}), 0.2),
             ]
-            with patch("backend.rag.retriever.embeddings.embed_query", return_value=[1.0, 0.0, 0.5, 0.5]):
-                _run_mmr_search("query", config)
+            _run_mmr_search("query", config)
             mock_mmr.assert_called_once()
             assert mock_mmr.call_args[1]["lambda_mult"] == 0.7
             assert mock_mmr.call_args[1]["top_k"] == 2
@@ -282,8 +285,7 @@ class TestMMRRetrieval:
                 (Document(page_content="A", metadata={}), 0.1),
                 (Document(page_content="B", metadata={}), 0.2),
             ]
-            with patch("backend.rag.retriever.embeddings.embed_query", return_value=[1.0, 0.0, 0.5, 0.5]):
-                _run_mmr_search("query", config)
+            _run_mmr_search("query", config)
             mock_mmr.assert_called_once()
             # The include fields are handled internally by mmr_search_with_scores
 
@@ -296,8 +298,7 @@ class TestMMRRetrieval:
                 (Document(page_content="A", metadata={"document_id": "1", "filename": "a.pdf"}), 0.1),
                 (Document(page_content="B", metadata={"document_id": "2", "filename": "b.pdf"}), 0.2),
             ]
-            with patch("backend.rag.retriever.embeddings.embed_query", return_value=[1.0, 0.0, 0.5, 0.5]):
-                results = _run_mmr_search("query", config)
+            results = _run_mmr_search("query", config)
         for doc, _ in results:
             assert "document_id" in doc.metadata
             assert "filename" in doc.metadata
@@ -311,8 +312,7 @@ class TestMMRRetrieval:
                 (Document(page_content="A", metadata={}), 0.1),
                 (Document(page_content="B", metadata={}), 0.2),
             ]
-            with patch("backend.rag.retriever.embeddings.embed_query", return_value=[1.0, 0.0, 0.5, 0.5]):
-                results = _run_mmr_search("query", config)
+            results = _run_mmr_search("query", config)
         for doc, score in results:
             assert isinstance(doc, Document)
             assert isinstance(score, float)
@@ -323,8 +323,7 @@ class TestMMRRetrieval:
         config = RetrievalConfig(top_k=4, search_type="mmr", fetch_k=4)
         with patch("backend.rag.retriever.mmr_search_with_scores") as mock_mmr:
             mock_mmr.return_value = []
-            with patch("backend.rag.retriever.embeddings.embed_query", return_value=[1.0, 0.0, 0.5, 0.5]):
-                results = _run_mmr_search("query", config)
+            results = _run_mmr_search("query", config)
         assert len(results) == 0
 
 
@@ -342,7 +341,8 @@ class TestRetrieveContext:
             serialized, artifact = retrieve_context.func("query")
 
         assert isinstance(artifact, RetrievalResult)
-        assert artifact.query == "query"
+        assert artifact.original_query == "query"
+        assert artifact.retrieval_query == "query"
         assert len(artifact.chunks) == 1
         assert artifact.chunks[0].document.page_content == "test"
         assert artifact.chunks[0].score == 0.5
@@ -392,8 +392,7 @@ class TestRetrieveContext:
                 (Document(page_content="doc1", metadata={"doc": "1"}), 0.1),
                 (Document(page_content="doc2", metadata={"doc": "2"}), 0.2),
             ]
-            with patch("backend.rag.retriever.embeddings.embed_query", return_value=[1.0, 0.0, 0.5, 0.5]):
-                serialized, artifact = retrieve_context.func("query", config=config)
+            serialized, artifact = retrieve_context.func("query", config=config)
 
         assert isinstance(artifact, RetrievalResult)
         assert len(artifact.chunks) == 2
@@ -413,6 +412,117 @@ class TestRetrieveContext:
         assert isinstance(serialized, str)
         assert "hello world" in serialized
         assert "doc_id" in serialized
+
+
+# ======================================================================
+# Query Rewriting Tests
+# ======================================================================
+
+class TestQueryRewriting:
+    """Tests for query rewriting functionality."""
+
+    def test_no_rewrite_strategy_returns_original_query(self):
+        from backend.rag.query_rewriter import rewrite_query
+
+        result = rewrite_query("test query", "none")
+        assert result == "test query"
+
+    def test_no_rewrite_preserves_empty_query(self):
+        from backend.rag.query_rewriter import rewrite_query
+
+        result = rewrite_query("", "none")
+        assert result == ""
+
+    def test_no_rewrite_preserves_whitespace_only(self):
+        from backend.rag.query_rewriter import rewrite_query
+
+        result = rewrite_query("   ", "none")
+        assert result == "   "
+
+    def test_llm_rewrite_returns_string(self):
+        from backend.rag.query_rewriter import rewrite_query
+
+        # This will use the actual LLM if no mock, so we just verify it returns a string
+        # In practice, this test would be mocked
+        with patch("langchain_groq.ChatGroq") as mock_chat_groq:
+            mock_llm = MagicMock()
+            mock_llm.invoke.return_value = MagicMock(content="rewritten query")
+            mock_chat_groq.return_value = mock_llm
+            
+            result = rewrite_query("test query", "llm")
+            assert isinstance(result, str)
+            assert result == "rewritten query"
+
+    def test_invalid_strategy_raises_error(self):
+        from backend.rag.query_rewriter import rewrite_query
+
+        with pytest.raises(ValueError, match="Unknown query_rewrite strategy"):
+            rewrite_query("test query", "invalid")
+
+    def test_retrieve_context_with_no_rewrite(self):
+        """Test that retrieve_context preserves both queries when no rewrite."""
+        from backend.rag.retriever import retrieve_context
+
+        mock_doc = Document(page_content="test", metadata={"document_id": "1"})
+        config = RetrievalConfig(query_rewrite="none")
+        with patch("backend.rag.retriever.similarity_search_with_scores_filtered") as mock_search:
+            mock_search.return_value = [(mock_doc, 0.5)]
+            serialized, artifact = retrieve_context.func("original query", config=config)
+
+        assert artifact.original_query == "original query"
+        assert artifact.retrieval_query == "original query"
+
+    def test_retrieve_context_with_llm_rewrite_mocked(self):
+        """Test that retrieve_context uses rewritten query for retrieval."""
+        from backend.rag.retriever import retrieve_context
+
+        mock_doc = Document(page_content="test", metadata={"document_id": "1"})
+        config = RetrievalConfig(query_rewrite="llm")
+        with patch("backend.rag.retriever.similarity_search_with_scores_filtered") as mock_search:
+            with patch("backend.rag.retriever.rewrite_query", return_value="rewritten query") as mock_rewrite:
+                mock_search.return_value = [(mock_doc, 0.5)]
+                serialized, artifact = retrieve_context.func("original query", config=config)
+
+        # Verify rewrite was called
+        mock_rewrite.assert_called_once_with("original query", "llm")
+        # Verify retrieval used rewritten query
+        mock_search.assert_called_once_with(query="rewritten query", top_k=4, metadata_filter=None)
+        # Verify both queries preserved in result
+        assert artifact.original_query == "original query"
+        assert artifact.retrieval_query == "rewritten query"
+
+    def test_rewrite_failure_falls_back_to_original(self):
+        """Test that rewrite failure falls back to original query."""
+        from backend.rag.retriever import retrieve_context
+
+        mock_doc = Document(page_content="test", metadata={"document_id": "1"})
+        config = RetrievalConfig(query_rewrite="llm")
+        with patch("backend.rag.retriever.similarity_search_with_scores_filtered") as mock_search:
+            with patch("backend.rag.retriever.rewrite_query", side_effect=Exception("LLM failed")):
+                mock_search.return_value = [(mock_doc, 0.5)]
+                serialized, artifact = retrieve_context.func("original query", config=config)
+
+        # Should fall back to original query
+        mock_search.assert_called_once_with(query="original query", top_k=4, metadata_filter=None)
+        assert artifact.original_query == "original query"
+        assert artifact.retrieval_query == "original query"
+
+    def test_mmr_with_llm_rewrite_mocked(self):
+        """Test MMR retrieval with mocked LLM rewrite."""
+        from backend.rag.retriever import retrieve_context
+
+        config = RetrievalConfig(search_type="mmr", top_k=2, fetch_k=4, query_rewrite="llm")
+        with patch("backend.rag.retriever.mmr_search_with_scores") as mock_mmr:
+            mock_mmr.return_value = [
+                (Document(page_content="doc1", metadata={"doc": "1"}), 0.1),
+                (Document(page_content="doc2", metadata={"doc": "2"}), 0.2),
+            ]
+            with patch("backend.rag.retriever.rewrite_query", return_value="rewritten query"):
+                serialized, artifact = retrieve_context.func("original query", config=config)
+
+        assert artifact.original_query == "original query"
+        assert artifact.retrieval_query == "rewritten query"
+        assert len(artifact.chunks) == 2
 
 
 # ======================================================================
@@ -493,8 +603,7 @@ class TestMetadataFiltering:
                 (Document(page_content="A", metadata={"document_id": "1"}), 0.1),
                 (Document(page_content="B", metadata={"document_id": "1"}), 0.2),
             ]
-            with patch("backend.rag.retriever.embeddings.embed_query", return_value=[1.0, 0.0, 0.5, 0.5]):
-                results = _run_mmr_search("query", config)
+            results = _run_mmr_search("query", config)
         assert len(results) == 2
         mock_mmr.assert_called_once()
         assert mock_mmr.call_args[1]["metadata_filter"] == {"document_id": "1"}
@@ -513,8 +622,7 @@ class TestMetadataFiltering:
                 (Document(page_content="A", metadata={"filename": "tech.pdf"}), 0.1),
                 (Document(page_content="B", metadata={"filename": "tech.pdf"}), 0.2),
             ]
-            with patch("backend.rag.retriever.embeddings.embed_query", return_value=[1.0, 0.0, 0.5, 0.5]):
-                results = _run_mmr_search("query", config)
+            results = _run_mmr_search("query", config)
         assert len(results) == 2
         mock_mmr.assert_called_once()
         assert mock_mmr.call_args[1]["metadata_filter"] == {"filename": "tech.pdf"}
@@ -529,8 +637,7 @@ class TestMetadataFiltering:
                 (Document(page_content="A", metadata={}), 0.1),
                 (Document(page_content="B", metadata={}), 0.2),
             ]
-            with patch("backend.rag.retriever.embeddings.embed_query", return_value=[1.0, 0.0, 0.5, 0.5]):
-                _run_mmr_search("query", config)
+            _run_mmr_search("query", config)
         mock_mmr.assert_called_once()
         assert mock_mmr.call_args[1].get("metadata_filter") is None
 

@@ -11,7 +11,8 @@ class RetrievedChunk:
 
 @dataclass
 class RetrievalResult:
-    query: str
+    original_query: str
+    retrieval_query: str
     chunks: list[RetrievedChunk]
 
 

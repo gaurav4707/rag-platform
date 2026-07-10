@@ -201,7 +201,7 @@ Goal
 Improve retrieval quality before expanding agent capabilities.
 
 Completed
-
+- Retrieval Configuration
 - Maximum Marginal Relevance (MMR)
 - Metadata filtering
 
