@@ -1,0 +1,52 @@
+[
+  {
+    "id": "q1",
+    "question": "What is Retrieval-Augmented Generation (RAG)?",
+    "expected_document_ids": ["rag-paper.pdf"],
+    "expected_pages": [1, 2],
+    "metadata": {
+      "category": "definition",
+      "difficulty": "easy"
+    }
+  },
+  {
+    "id": "q2",
+    "question": "How does the attention mechanism work in transformers?",
+    "expected_document_ids": ["transformer-paper.pdf"],
+    "expected_pages": [3, 4, 5],
+    "metadata": {
+      "category": "technical",
+      "difficulty": "medium"
+    }
+  },
+  {
+    "id": "q3",
+    "question": "What are the benefits of using hybrid retrieval over dense-only retrieval?",
+    "expected_document_ids": ["hybrid-retrieval.pdf", "rag-paper.pdf"],
+    "expected_pages": [2, 3],
+    "metadata": {
+      "category": "comparison",
+      "difficulty": "medium"
+    }
+  },
+  {
+    "id": "q4",
+    "question": "Explain Maximum Marginal Relevance (MMR) for diversity in retrieval.",
+    "expected_document_ids": ["mmr-paper.pdf"],
+    "expected_pages": [1],
+    "metadata": {
+      "category": "technical",
+      "difficulty": "hard"
+    }
+  },
+  {
+    "id": "q5",
+    "question": "What is the role of cross-encoder reranking in RAG pipelines?",
+    "expected_document_ids": ["reranker-paper.pdf"],
+    "expected_pages": [2, 3],
+    "metadata": {
+      "category": "technical",
+      "difficulty": "medium"
+    }
+  }
+]

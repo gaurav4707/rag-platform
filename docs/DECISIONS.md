@@ -1123,9 +1123,252 @@ These trade-offs are acceptable because:
 
 ---
 
+---
+
+# ADR-017
+
+## Title
+
+LLM-Based Query Rewriting Before Retrieval
+
+**Status**
+
+Accepted
+
+### Context
+
+User queries in conversational RAG systems are often ambiguous, conversational, or follow-up questions that reference previous context. For example:
+
+- "How does it work?" (after discussing RAG)
+- "Explain this section." (referring to a previous retrieval)
+- "What about the attention mechanism?" (follow-up)
+
+These queries perform poorly with direct vector similarity search because they lack the context needed to match relevant document chunks.
+
+### Decision
+
+Implement LLM-based query rewriting as a configurable step that runs **before** retrieval strategy selection.
+
+**Architecture:**
+
+1. **Provider-Agnostic Interface**: `BaseQueryRewriter` protocol allows swapping implementations (LLM-based, rule-based, cached, etc.)
+2. **Configurable**: Controlled via `RetrievalConfig.query_rewrite` ("none" | "llm") and `RetrievalConfig.query_rewriting_enabled` (bool)
+3. **Heuristic Skip**: The LLM rewriter detects queries that are already specific enough (technical terms, standalone questions) and skips rewriting to avoid unnecessary LLM calls
+4. **Graceful Fallback**: If rewriting fails (LLM unavailable, timeout, error), falls back to original query without failing the request
+5. **Preserved Queries**: Both original and rewritten queries are stored in `RetrievalResult`:
+   - `original_query`: Used by Prompt Builder for context-aware prompting
+   - `retrieval_query`: Used by Retriever for vector search
+
+**Pipeline Position:**
+```
+User Question
+      │
+      ▼
+Query Rewriter (if enabled)
+      │
+      ▼
+Retrieval Strategy (Hybrid/MMR/Similarity)
+      │
+      ▼
+Vector Store
+```
+
+### Alternatives Considered
+
+#### 1. No Query Rewriting (Baseline)
+- Pro: Simple, no additional latency
+- Con: Poor retrieval for conversational/follow-up queries
+
+#### 2. Multi-Query Retrieval (Generate multiple queries, merge results)
+- Pro: Better recall for complex queries
+- Con: Multiple retrieval operations per request; violates single-retrieval invariant; higher latency and cost
+
+#### 3. Query Expansion with Fixed Rules/Synonyms
+- Pro: No LLM call needed
+- Con: Brittle; doesn't handle conversational context; limited coverage
+
+#### 4. Rewrite Inside Retrieval Strategy
+- Pro: Encapsulated
+- Con: Couples rewriting to specific strategies; makes strategy selection more complex; harder to test in isolation
+
+### Consequences
+
+**Advantages:**
+- Significantly improves retrieval for conversational and follow-up queries
+- Provider-agnostic design allows future implementations (local models, cached rewrites, rule-based)
+- Heuristic skip avoids unnecessary LLM calls for already-specific queries
+- Graceful degradation ensures chat never fails due to rewriting
+- Preserves original query for prompt building (citations, context)
+
+**Trade-offs:**
+- Additional LLM call latency (~100-300ms) when rewriting is triggered
+- Requires LLM availability (falls back gracefully if unavailable)
+- Configuration complexity (two flags: strategy + enabled)
+
 ### Revisit When
 
-A second vector database is introduced and a formal provider abstraction is warranted.
+- Reranking is implemented (should operate on RetrievalResult, not trigger new searches)
+- Multi-query retrieval is needed for complex questions
+- Local/small-model rewriting becomes viable for lower latency
+
+---
+
+# ADR-018
+
+## Title
+
+Cross-Encoder Reranking After Retrieval
+
+**Status**
+
+Accepted
+
+### Context
+
+Hybrid retrieval (dense + BM25 with RRF) significantly improves recall by combining semantic and lexical matching. However, the initial retrieval scores from dense vectors and BM25 are not directly comparable and may not accurately reflect true relevance to the user's query.
+
+Cross-encoders address this by jointly encoding the query and candidate passage, producing a more accurate relevance score. Unlike bi-encoders (used for dense retrieval), cross-encoders attend to both the query and document simultaneously, capturing fine-grained interactions.
+
+The challenge was adding reranking without:
+- Triggering additional vector store queries (violating the single-retrieval invariant)
+- Changing the public API
+- Tightly coupling to a specific reranking model
+
+---
+
+### Decision
+
+Implement Cross-Encoder Reranking as a post-retrieval step that operates on the `RetrievalResult` produced by the retrieval strategy.
+
+**Architecture:**
+
+1. **Provider-Agnostic Abstraction**: `BaseReranker` protocol in `reranker.py` allows swapping implementations.
+2. **Default Implementation**: `CrossEncoderReranker` using a local Hugging Face model (default: `cross-encoder/ms-marco-MiniLM-L-6-v2`).
+3. **No-Op Implementation**: `NoOpReranker` for when reranking is disabled.
+4. **Factory Function**: `get_reranker()` for instantiation.
+5. **Configuration**: Extended `RetrievalConfig` with:
+   - `reranker: "none" | "cross_encoder"` (default: "cross_encoder")
+   - `reranker_top_k: int` (default: 6) — final chunk count after reranking
+   - `reranker_candidate_count: int` (default: 20) — candidate count before reranking (set via hybrid's `final_top_k`)
+
+**Pipeline Position:**
+```
+User Question
+      │
+      ▼
+Query Rewriter (if enabled)
+      │
+      ▼
+Retrieval Strategy (Hybrid/MMR/Similarity)
+      │
+      ▼
+Vector Store + BM25
+      │
+      ▼
+RetrievalResult (candidates)
+      │
+      ▼
+Cross-Encoder Reranker
+      │
+      ▼
+RetrievalResult (reranked, top-k)
+      │
+      ├────────────► Prompt Builder
+      │
+      ├────────────► Citation Builder
+      │
+      └────────────► Agent
+```
+
+**Behavior:**
+
+- Reranker receives the retrieval query and candidate chunks
+- Computes relevance scores via cross-encoder batch inference
+- Reorders chunks by score (highest first)
+- Returns top `reranker_top_k` chunks
+- All chunk metadata and content preserved; only order changes
+- Latency logged for observability
+
+**Performance Optimizations:**
+
+- Singleton model instance (lazy-loaded on first use)
+- Thread-safe initialization
+- Batch inference (all pairs in one forward pass)
+- CPU-compatible model (~22M parameters, ~100MB)
+
+**Error Handling:**
+
+- If reranking fails (model load error, inference error), log exception and return original chunk order
+- Request continues normally — chat never fails due to reranking
+
+---
+
+### Alternatives Considered
+
+#### 1. No Reranking (Baseline)
+- Pro: Simple, no additional latency
+- Con: Relies on retrieval scores that may not reflect true relevance
+
+#### 2. LLM-Based Reranking (e.g., GPT-4, local LLM)
+- Pro: Can reason about relevance with full context
+- Pro: No additional model dependency
+- Con: High latency (seconds per request)
+- Con: Non-deterministic, harder to evaluate
+- Con: Expensive API calls or heavy local compute
+
+#### 3. API-Based Rerankers (Cohere, Jina, Voyage)
+- Pro: State-of-the-art relevance
+- Pro: No local model management
+- Con: External dependency, API keys required
+- Con: Latency variance, rate limits
+- Con: Data leaves local environment
+
+#### 4. Reranking as a Retrieval Strategy
+- Pro: Encapsulated in strategy pattern
+- Con: Would trigger separate retrieval operation
+- Con: Violates single-retrieval invariant
+- Con: Couples reranking to specific retrieval methods
+
+#### 5. Learn-to-Rank / Lightweight Neural Rerankers (e.g., monoT5)
+- Pro: Effective, smaller than cross-encoders
+- Con: Additional model dependency
+- Con: More complex implementation
+
+---
+
+### Consequences
+
+**Advantages:**
+
+- **Improved precision**: Cross-encoder scores better reflect true query-document relevance
+- **Preserves single-retrieval invariant**: Reranking operates on existing `RetrievalResult`, no new vector queries
+- **Provider-agnostic**: Abstraction allows future rerankers (LLM, API, no-op) without changing retriever
+- **Local-first**: Default model runs on CPU, no external API, no GPU required
+- **Efficient**: Singleton model, batch inference, lightweight model (~22M params)
+- **Observable**: Retrieval metadata includes reranker info, candidate count, final count, latency
+- **Graceful degradation**: Failures fall back to original order, request succeeds
+
+**Trade-offs:**
+
+- **Additional latency**: ~30-80ms for cross-encoder inference on CPU (depends on candidate count)
+- **Memory overhead**: Model weights (~100MB) loaded in memory
+- **Model dependency**: Requires `sentence-transformers` package
+- **Configuration**: Two new config parameters (`reranker`, `reranker_top_k`)
+
+These trade-offs are acceptable because:
+- Latency is minimal compared to LLM generation
+- Model is small and CPU-friendly
+- Default enables reranking for better quality out of the box
+- Can be disabled via config if needed
+
+---
+
+### Revisit When
+
+- LLM-based reranking becomes practical for local inference (e.g., via Ollama, llama.cpp)
+- Multi-stage reranking (e.g., cross-encoder → LLM) is needed
+- GPU acceleration becomes standard for local inference
+- Evaluation shows marginal gains for specific domains
 
 ---
 
@@ -1142,3 +1385,108 @@ A new decision should be recorded when:
 Small implementation details should not be recorded here.
 
 This document should explain **why** decisions were made, not **how** they were implemented.
+
+---
+
+# ADR-019
+
+## Title
+
+Separate Prompt Construction from Retrieval and Generation
+
+**Status**
+
+Accepted
+
+### Context
+
+In the initial implementation, prompt construction was embedded within the LangChain agent middleware as a static system prompt. The agent received the user question, called the retrieve_context tool, and then generated an answer using the tool results as context. This approach had several limitations:
+
+1. **Tight coupling to LangChain**: The prompt was constructed via middleware, making it difficult to customize the prompt structure or test independently.
+2. **No context formatting control**: The tool's serialized output was a simple "Source: metadata\nContent: text" format that didn't include clear metadata fields, separators, or structured sections.
+3. **No deduplication**: Duplicate chunks from hybrid retrieval could appear in the context, wasting tokens.
+4. **No context length management**: Long contexts could exceed model limits without graceful handling.
+5. **Weak grounding instructions**: The system prompt had basic grounding rules but lacked explicit citation guidance, hallucination prevention, and behavior constraints.
+6. **Provider-specific assumptions**: The middleware approach assumed LangChain's message format.
+
+As retrieval quality improved (hybrid search, reranking), the need for better prompt construction became more critical to fully leverage the retrieved context.
+
+### Decision
+
+Extract prompt construction into a dedicated **Prompt Builder** module (`prompts.py`) with the following responsibilities:
+
+1. **Build structured prompts** with four clearly separated sections:
+   - SYSTEM INSTRUCTIONS (grounding rules, citation guidance, behavior)
+   - USER QUESTION (original question)
+   - RETRIEVED CONTEXT (formatted chunks with metadata)
+   - ANSWER (generation instruction)
+
+2. **Format context with rich metadata**: Each chunk includes Document (filename), Page, Chunk index, and Relevance Score — never internal IDs.
+
+3. **Deduplicate chunks**: Remove exact-content duplicates before formatting, preserving the highest-ranked occurrence.
+
+4. **Manage context length**: Truncate from the end to fit within a character budget (default 8000 chars), preserving retrieval order. Never truncate individual chunks.
+
+5. **Strengthen grounding**: Explicit instructions to answer only from context, state when information is unavailable, avoid fabrication, prefer precision, synthesize multi-source answers, preserve terminology.
+
+6. **Guide citations**: Instruct the LLM to reference sources naturally, attribute key claims, and avoid internal metadata references.
+
+7. **Provider-agnostic output**: Plain text that works with any chat model — no special tokens, no model detection, no provider-specific formatting.
+
+8. **Modular design**: Separate functions for each section (`build_system_prompt`, `build_user_question_section`, `build_context_section`, `build_final_instruction`, `build_prompt`) enable testing and future iteration.
+
+The Agent (`agent.py`) now orchestrates:
+1. Call `retrieve_context` tool to get `RetrievalResult`
+2. Call `build_prompt(question, retrieval_result)` from Prompt Builder
+3. Send prompt to LLM for answer generation
+4. Build citations from same `RetrievalResult`
+5. Return `ChatResult`
+
+This preserves the single-retrieval invariant: the `RetrievalResult` flows to Prompt Builder, Citation Builder, and Agent without additional vector store queries.
+
+### Alternatives Considered
+
+#### 1. Keep LangChain Middleware Prompt
+- Pro: Minimal change
+- Con: Cannot customize structure, format context, or manage length; tied to LangChain internals
+
+#### 2. Embed Prompt Logic in Agent
+- Pro: Co-located with orchestration
+- Con: Violates single responsibility; harder to test; mixes business logic with prompt engineering
+
+#### 3. Prompt Templates in Config Files
+- Pro: Non-code changes
+- Con: Logic (deduplication, truncation, metadata formatting) cannot live in templates; still need code
+
+#### 4. LLM-Based Prompt Optimization
+- Pro: Could optimize prompts automatically
+- Con: Adds latency, complexity, non-determinism; overkill for current needs
+
+### Consequences
+
+**Advantages:**
+- Clear separation: Prompt Builder only constructs prompts; never performs retrieval
+- Structured context improves LLM comprehension and grounding
+- Deduplication and truncation prevent token waste and overflow
+- Strong grounding instructions reduce hallucinations
+- Citation guidance produces more attributable answers
+- Provider-agnostic: works with Groq, OpenAI, Anthropic, local models
+- Testable: Each section builder is a pure function
+- Extensible: Easy to add new sections, modify formatting, adjust config
+
+**Trade-offs:**
+- Additional module (`prompts.py`)
+- Agent now explicitly calls Prompt Builder (was implicit in middleware)
+- Context length budget requires tuning (default 8000 chars)
+
+### Revisit When
+
+- Structured output parsing is needed (JSON, function calling)
+- Multi-modal prompts (images, tables) are introduced
+- Conversation history requires context injection
+- Evaluation shows prompt format significantly impacts quality
+
+---
+
+# Decision Guidelines
+

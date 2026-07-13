@@ -63,11 +63,11 @@ Implemented
 - **Retrieval Strategy Pattern (Similarity, MMR, Hybrid)**
 - **Centralized Retrieval Configuration**
 - **Retrieval Metadata for debugging/evaluation**
+- **Query Rewriting**
+- **Cross-Encoder Reranking**
 
 In Progress
 
-- Query rewriting
-- Reranking
 - Retrieval evaluation
 
 ---
@@ -212,14 +212,14 @@ Completed
 - **Retrieval Strategy Pattern (Similarity, MMR, Hybrid)**
 - **Centralized Retrieval Configuration in RetrievalConfig**
 - **Retrieval Metadata for debugging and evaluation**
+- **Query Rewriting**
+- **Cross-Encoder Reranking**
+- **Prompt Improvements**
+- **Offline Retrieval Evaluation Framework**
 
 Planned
 
 - Better chunking strategies
-- Query rewriting
-- Reranking
-- Prompt improvements
-- Retrieval evaluation
 
 ---
 

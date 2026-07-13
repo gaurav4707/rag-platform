@@ -19,5 +19,12 @@ class RetrievalConfig:
     rrf_k: int = 60
     hybrid_enabled: bool = True
 
+    # Query rewriting settings
+    query_rewriting_enabled: bool = True
+
+    # Reranking settings
+    reranker: Literal["none", "cross_encoder"] = "cross_encoder"
+    reranker_top_k: int = 6
+
 
 DEFAULT_RETRIEVAL_CONFIG = RetrievalConfig()

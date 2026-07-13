@@ -80,6 +80,13 @@ Retriever Tool (retrieve_context)
 
 ↓
 
+Query Rewriter (if enabled)
+├── Rewrites ambiguous/follow-up queries
+├── Skips already-specific queries
+└── Preserves original + rewritten query
+
+↓
+
 Retriever (Strategy Dispatch)
 ├── SimilarityStrategy
 ├── MMRStrategy
@@ -93,9 +100,17 @@ Vector Store
 
 ↓
 
+Cross-Encoder Reranker (if enabled)
+├── Receives query + candidate chunks
+├── Computes relevance scores
+├── Reranks by cross-encoder score
+└── Returns top-K reranked chunks
+
+↓
+
 RetrievalResult
       │
-      ├────────────► Prompt Builder
+      ├────────────► Prompt Builder (uses original_query)
       │
       ├────────────► Citation Builder
       │
@@ -371,7 +386,7 @@ Responsibilities
 The retrieval tool:
 
 - receives the user query
-- optionally rewrites the query (future)
+- optionally rewrites the query
 - invokes the retriever with a RetrievalConfig
 - returns a RetrievalResult
 
@@ -380,6 +395,7 @@ The retriever:
 - selects a retrieval strategy via `get_strategy(search_type)`
 - delegates to the strategy's `retrieve()` method
 - strategies handle vector store and BM25 queries
+- invokes reranker (if enabled) on retrieved chunks
 - returns a RetrievalResult with retrieval_metadata
 
 Example
@@ -399,6 +415,11 @@ RetrievalResult(
         "duplicates_removed": 4,
         "fusion": "rrf",
         "rrf_k": 60,
+        "reranker": "cross_encoder",
+        "reranking_applied": true,
+        "candidate_count": 20,
+        "final_count": 6,
+        "reranking_latency_ms": 42.3,
     },
 )
 ```
@@ -409,7 +430,36 @@ No other component should perform another retrieval.
 
 ---
 
-## Step 5 — Build Prompt
+## Step 5 — Cross-Encoder Reranking (if enabled)
+
+Module
+
+```
+reranker.py
+```
+
+Input
+
+- User query (retrieval_query)
+- Candidate chunks from retrieval strategy
+
+Responsibilities
+
+- Load cross-encoder model (lazy singleton)
+- Compute relevance scores for (query, chunk) pairs via batch inference
+- Rerank chunks by cross-encoder score (descending)
+- Preserve all chunk metadata and content
+- Return top-K reranked chunks
+
+The Reranker:
+- Runs after retrieval strategy, before prompt construction
+- Never performs retrieval or accesses the vector store
+- Only reorders existing chunks
+- Gracefully falls back to original order on failure
+
+---
+
+## Step 6 — Build Prompt
 
 Module
 
@@ -434,7 +484,103 @@ It consumes the RetrievalResult produced by the retriever.
 
 ---
 
-## Step 6 — Generate Response
+### Prompt Structure
+
+The Prompt Builder constructs a prompt with four clearly separated sections:
+
+```
+========================
+SYSTEM INSTRUCTIONS
+========================
+
+[Grounding rules, citation guidance, behavior constraints]
+
+========================
+USER QUESTION
+========================
+
+[Original user question]
+
+========================
+RETRIEVED CONTEXT
+========================
+
+[Source 1]
+Document: filename.pdf
+Page: 7
+Chunk: 15
+Relevance Score: 0.1234
+
+Content:
+[chunk text]
+
+--------------------------------------------------
+
+[Source 2]
+Document: another.pdf
+Page: 3
+Chunk: 2
+Relevance Score: 0.2345
+
+Content:
+[chunk text]
+
+========================
+ANSWER
+========================
+
+Provide your answer based on the retrieved context above.
+```
+
+### Context Formatting
+
+Every retrieved chunk includes user-friendly metadata:
+
+- **Document**: Original filename (e.g., `architecture.pdf`)
+- **Page**: Page number from PyPDFLoader (0-indexed)
+- **Chunk**: Chunk index within the document
+- **Relevance Score**: Cross-encoder or vector similarity score (4 decimal places)
+
+Internal IDs (document_id, chunk_index as stored in ChromaDB) are never exposed in the prompt.
+
+### Context Processing
+
+Before formatting, the Prompt Builder applies:
+
+1. **Deduplication**: Removes chunks with identical content (exact string match). Preserves the first occurrence (highest rank).
+2. **Truncation**: If total context exceeds the configured character budget (default 8000 chars), removes lowest-ranked chunks from the end. Never truncates individual chunks.
+3. **Ordering**: Preserves the retrieval/reranking order exactly. Never re-sorts chunks.
+
+### Grounding Instructions
+
+The SYSTEM INSTRUCTIONS section enforces:
+
+- **Strict Grounding**: Answer ONLY using provided context
+- **Explicit Uncertainty**: State "I don't know based on the available documents" when context is insufficient
+- **No Hallucination**: Do not fabricate or infer unsupported facts
+- **Precision Over Speculation**: Prefer direct, precise answers
+- **Multi-Source Synthesis**: Combine information from multiple sources while preserving attribution
+- **Terminology Preservation**: Keep technical terms from source documents
+
+### Citation Guidance
+
+The prompt instructs the LLM to:
+
+- Reference sources naturally (e.g., "According to Document X..." or "Source 1 states...")
+- Not cite every sentence, but make key claims attributable
+- Never reference internal chunk IDs or hidden metadata fields
+
+### Provider-Agnostic Design
+
+The Prompt Builder produces plain text with no:
+
+- Special tokens (`<|`, `<<SYS>>`, etc.)
+- Model-specific formatting
+- Provider detection logic
+
+The same prompt works with any chat model (Groq, OpenAI, Anthropic, local models).
+
+## Step 7 — Generate Response
 
 Module
 
@@ -458,7 +604,7 @@ The provider may change without affecting the surrounding pipeline.
 
 ---
 
-## Step 7 — Build Source Citations
+## Step 8 — Build Source Citations
 
 Module
 
@@ -483,7 +629,7 @@ This guarantees that citations always correspond to the exact documents used by 
 
 ---
 
-## Step 8 — Build Chat Result
+## Step 9 — Build Chat Result
 
 The Agent returns a ChatResult containing
 
@@ -527,6 +673,13 @@ retrieve_context
 
 ↓
 
+Query Rewriter (if enabled)
+├── Rewrites ambiguous/follow-up queries
+├── Skips already-specific queries
+└── Preserves original + rewritten query
+
+↓
+
 Retriever (Strategy Dispatch)
 ├── SimilarityStrategy
 ├── MMRStrategy
@@ -540,9 +693,16 @@ Vector Store + BM25
 
 ↓
 
+Cross-Encoder Reranker (if enabled)
+├── Computes relevance scores
+├── Reranks candidates
+└── Returns top-K
+
+↓
+
 RetrievalResult
       │
-      ├────────────► Prompt Builder
+      ├────────────► Prompt Builder (uses original_query)
       │
       ├────────────► Citation Builder
       │
@@ -568,7 +728,7 @@ Streaming Response
 ## Retrieval
 
 - Hybrid Search (implemented)
-- Query Rewriting
+- Query Rewriting (implemented)
 - Multi-query Retrieval
 - Context Compression
 - Parent Document Retrieval
@@ -577,7 +737,7 @@ Streaming Response
 
 ## Ranking
 
-- Cross Encoder Reranking
+- Cross Encoder Reranking (implemented)
 - Reciprocal Rank Fusion (implemented for Hybrid)
 - Score Thresholding
 
@@ -660,10 +820,17 @@ Retrieval Strategies
 - Return RetrievalResult with metadata.
 - New strategies can be added without modifying existing code.
 
+Reranker
+
+- Only reranks retrieved chunks.
+- Never performs retrieval or accesses the vector store.
+- Preserves all metadata and content.
+
 Retriever
 
 - Only performs retrieval orchestration.
 - Selects retrieval strategy.
+- Invokes reranker (if enabled).
 - Produces a RetrievalResult.
 - Never constructs prompts.
 

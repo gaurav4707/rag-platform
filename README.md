@@ -292,6 +292,66 @@ The API will be available at `http://localhost:8000`.
 
 ---
 
+## Running Tests
+
+Run the test suite with pytest:
+
+```bash
+# Run all tests with verbose output
+pytest
+
+# Run tests for a specific module
+pytest backend/tests/test_prompts.py
+
+# Run with extra verbosity
+pytest -v
+```
+
+### Generating Coverage Reports
+
+The project uses **pytest-cov** and **coverage.py** for coverage reporting.
+
+**Terminal Summary (with missing lines):**
+
+```bash
+pytest --cov=backend --cov-report=term-missing
+```
+
+**HTML Report (open `htmlcov/index.html` in browser):**
+
+```bash
+pytest --cov=backend --cov-report=html
+```
+
+**XML Report (for CI integration):**
+
+```bash
+pytest --cov=backend --cov-report=xml
+```
+
+**All reports at once:**
+
+```bash
+pytest --cov=backend --cov-report=term-missing --cov-report=html --cov-report=xml
+```
+
+Coverage reports are generated in:
+
+- `htmlcov/` — HTML report (open `htmlcov/index.html`)
+- `coverage.xml` — XML report for CI/CD
+- Terminal output — Summary and missing lines
+
+### Coverage Configuration
+
+Coverage is configured in `pyproject.toml` under `[tool.coverage.run]`:
+
+- **Source**: `backend` package
+- **Branch coverage**: Enabled
+- **Excluded**: `tests/`, `__pycache__/`, `.venv/`, `venv/`, `build/`, `dist/`, `htmlcov/`, `*.egg-info/`
+- **Relative paths**: Enabled for readability
+
+---
+
 ## Development Roadmap
 
 | Milestone | Status | Description |
