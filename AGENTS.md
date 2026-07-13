@@ -67,7 +67,7 @@ Vector Store
 
 ↓
 
-Embeddings
+Embeddings (via Provider Factory)
 
 ↓
 
@@ -75,7 +75,7 @@ Document Chunks
 
 ↓
 
-LLM
+LLM (via Provider Factory)
 
 ↓
 
@@ -234,13 +234,15 @@ Supports
 - Maximum Marginal Relevance (MMR)
 - Metadata filtering
 - RetrievalConfig
+- Hybrid Search (Dense + BM25 with RRF)
+- Query Rewriting (LLM-based with heuristic skip)
+- Cross-Encoder Reranking
 
 Future
 
-- Hybrid Search
-- Query Rewriting
 - Multi-query Retrieval
-- Reranking
+- Parent Document Retrieval
+- Context Compression
 
 ---
 
@@ -912,9 +914,9 @@ LangChain
 
 ChromaDB
 
-HuggingFace Embeddings
+HuggingFace Embeddings (BAAI/bge-base-en-v1.5)
 
-Groq (Current LLM)
+Groq (Current LLM: llama-3.1-8b-instant)
 
 Pydantic
 ```
@@ -948,6 +950,7 @@ Contains
 - Chunk size
 - Chunk overlap
 - Vector database configuration
+- Provider selection (EMBEDDING_PROVIDER, LLM_PROVIDER)
 
 ---
 
@@ -956,8 +959,6 @@ Contains
 Typical examples
 
 ```
-GOOGLE_API_KEY
-
 GROQ_API_KEY
 ```
 
@@ -977,6 +978,11 @@ Provider selection should remain isolated from business logic.
 | `backend/rag/vector_store.py`  | ChromaDB implementation |
 | `backend/rag/prompts.py`       | Prompt construction     |
 | `backend/rag/citations.py`     | Citation generation     |
+| `backend/rag/query_rewriter.py`| Query rewriting         |
+| `backend/rag/reranker.py`      | Cross-encoder reranking |
+| `backend/rag/retrieval_strategies.py` | Strategy Pattern |
+| `backend/rag/bm25.py`          | BM25 lexical search     |
+| `backend/providers/`           | Provider factories      |
 | `backend/models/`              | Shared data models      |
 
 ---

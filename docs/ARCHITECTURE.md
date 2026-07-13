@@ -31,65 +31,65 @@ Every future feature should follow this architecture unless an explicit architec
 # 2. High-Level Architecture
 
 ```
-                     +----------------------+
-                     |     React Frontend   |
-                     +----------+-----------+
-                                |
-                          HTTP / Streaming
-                                |
-                     +----------v-----------+
-                     |      FastAPI API     |
-                     +----------+-----------+
-                                |
-                        Application Services
-                                |
-            +-------------------+-------------------+
-            |                                       |
-     Document Service                          Chat Service
-            |                                       |
-            +-------------------+-------------------+
-                                |
-                          Agentic RAG Engine
-                                |
-                  +-------------+-------------+
-                  |                           |
-               Agent                       Prompt Builder
-                  |
-            Tool Registry
-                  |
-     +------------+------------+--------------+
-     |                         |               |
- Retriever Tool           Future Tools      Future Tools
- (retrieve_context)      (Web Search,       (Calculator,
-                         Metadata, etc.)    Summarizer...)
-     |
- Retriever (Strategy Dispatch)
-     |
- +---+---+---+---+---+---+
- |   |   |   |   |   |   |
- ▼   ▼   ▼   ▼   ▼   ▼   ▼
+                      +----------------------+
+                      |     React Frontend   |
+                      +----------+-----------+
+                                 |
+                           HTTP / Streaming
+                                 |
+                      +----------v-----------+
+                      |      FastAPI API     |
+                      +----------+-----------+
+                                 |
+                         Application Services
+                                 |
+             +-------------------+-------------------+
+             |                                       |
+      Document Service                          Chat Service
+             |                                       |
+             +-------------------+-------------------+
+                                 |
+                           Agentic RAG Engine
+                                 |
+                   +-------------+-------------+
+                   |                           |
+                Agent                       Prompt Builder
+                   |
+             Tool Registry
+                   |
+      +------------+------------+--------------+
+      |                         |               |
+  Retriever Tool           Future Tools      Future Tools
+  (retrieve_context)      (Web Search,       (Calculator,
+                          Metadata, etc.)    Summarizer...)
+      |
+  Retriever (Strategy Dispatch)
+      |
+  +---+---+---+---+---+---+
+  |   |   |   |   |   |   |
+  ▼   ▼   ▼   ▼   ▼   ▼   ▼
 Similarity MMR Hybrid Query Rewrite Rerank Future
-     |
- Query Rewriter (if enabled)
-     |
- Vector Store (ChromaDB)
-     |
-     RetrievalResult
-     │
-     ├────────────► Prompt Builder
-     │
-     ├────────────► Citation Builder
-     │
-     └────────────► Agent
-     |
- Embeddings
-     |
- Splitter
-     |
- Loader
-     |
- Storage (PDFs)
- ```
+      |
+  Query Rewriter (if enabled)
+      |
+  Vector Store (ChromaDB)
+      |
+      RetrievalResult
+      │
+      ├────────────► Prompt Builder
+      │
+      ├────────────► Citation Builder
+      │
+      └────────────► Agent
+      |
+  Embeddings
+      |
+  Splitter
+      |
+  Loader
+      |
+  Storage (PDFs)
+```
 
 ---
 
@@ -131,6 +131,12 @@ project/
 │   ├── citations.py
 │   └── query_rewriter.py
 │
+├── providers/
+│   ├── __init__.py
+│   ├── embeddings.py
+│   ├── llm.py
+│   └── exceptions.py
+│
 ├── evaluation/
 │   ├── __init__.py
 │   ├── README.md
@@ -148,7 +154,8 @@ project/
 ├── tests/
 │   ├── __init__.py
 │   ├── conftest.py
-│   └── test_evaluation_metrics.py
+│   ├── test_evaluation_metrics.py
+│   ├── test_prompts.py
 │   └── test_retriever.py
 │
 ├── storage/
@@ -157,14 +164,13 @@ project/
 │
 ├── utils/
 │
+├── frontend/
 
-frontend/
+├── docs/
 
-docs/
+├── README.md
 
-README.md
-
-AGENTS.md
+├── AGENTS.md
 ```
 
 ---
@@ -320,6 +326,14 @@ Vector Store
 
 ↓
 
+Cross-Encoder Reranker (if enabled)
+├── Receives query + candidate chunks
+├── Computes relevance scores
+├── Reranks by cross-encoder score
+└── Returns top-K reranked chunks
+
+↓
+
 RetrievalResult
       │
       ├────────────► Prompt Builder (prompts.py)
@@ -445,7 +459,33 @@ Examples:
 - get_all_documents()
 - list_documents()
 
-The vector store is the only module that imports Chroma or generates embeddings.
+The vector store is the only module that imports Chroma or generates embeddings (via provider factory).
+
+---
+
+## providers/embeddings.py
+
+Embedding provider factory:
+
+- `get_embedding_provider()` — returns configured embedding instance (lazy singleton via `@lru_cache`)
+- Registry pattern for extensibility
+- Supports: huggingface
+
+---
+
+## providers/llm.py
+
+LLM provider factory:
+
+- `get_llm()` — returns configured LLM instance (lazy singleton via `@lru_cache`)
+- Registry pattern for extensibility
+- Supports: groq
+
+---
+
+## providers/exceptions.py
+
+- `ProviderConfigurationError` — raised for invalid provider configuration
 
 ---
 
@@ -474,6 +514,7 @@ for vector retrieval.
 - Provides `get_query_rewriter()` factory function
 
 The Query Rewriter:
+
 - Runs before retrieval strategy selection
 - Preserves both original and rewritten queries in RetrievalResult
 - Never performs retrieval or accesses the vector store
@@ -490,10 +531,12 @@ Implements the Strategy Pattern for retrieval:
 - **HybridStrategy**: Dense + BM25 with Reciprocal Rank Fusion (RRF)
 
 Each strategy:
+
 - Takes a query and RetrievalConfig
 - Returns a RetrievalResult with retrieval_metadata
 
 Future strategies:
+
 - QueryRewriteStrategy
 - RerankStrategy
 
@@ -509,6 +552,7 @@ Responsible only for reranking retrieved chunks by relevance to the query.
 - Provides `get_reranker()` factory function
 
 The Reranker:
+
 - Runs after retrieval strategy execution (on the RetrievalResult)
 - Never performs retrieval or accesses the vector store
 - Preserves all chunk metadata and content, only reorders
@@ -556,6 +600,7 @@ Fields:
 - query_rewriting_enabled: bool (default True)
 
 Hybrid-specific:
+
 - dense_top_k: int (default 10)
 - bm25_top_k: int (default 10)
 - final_top_k: int (default 6)
@@ -563,6 +608,7 @@ Hybrid-specific:
 - hybrid_enabled: bool (default True)
 
 Reranking settings:
+
 - reranker: "none" | "cross_encoder" (default "cross_encoder")
 - reranker_top_k: int (default 6)
 
@@ -897,3 +943,4 @@ The following rules should not be violated without recording an architectural de
 - All downstream components must reuse the RetrievalResult instead of issuing additional vector store queries.
 - Retrieval strategies are selected via the Strategy Pattern - new strategies can be added without modifying existing code.
 - BM25 index is in-memory only; ChromaDB remains the single source of truth.
+- Provider selection is centralized in `backend/providers/` — RAG components use factory functions.

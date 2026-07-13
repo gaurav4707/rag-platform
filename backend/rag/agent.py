@@ -11,7 +11,7 @@ from backend.models.rag_models import ChatResult, RetrievalResult
 from backend.rag.tool_registry import get_tools
 from backend.rag.prompts import build_prompt
 from backend.rag.citations import build_sources
-from backend.rag.llm import get_llm
+from backend.providers import get_llm
 from backend.rag.retriever import retrieve_context
 
 logger = logging.getLogger(__name__)

@@ -84,7 +84,7 @@ class LLMQueryRewriter(QueryRewriter):
         """Lazy-load the LLM to avoid circular imports."""
         if self._llm is None:
             try:
-                from backend.rag.llm import get_llm
+                from backend.providers import get_llm
                 self._llm = get_llm()
             except ImportError:
                 logger.warning("LLM not available, falling back to no-op rewriter")

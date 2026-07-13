@@ -458,7 +458,7 @@ class TestQueryRewriting:
 
         # This will use the actual LLM if no mock, so we just verify it returns a string
         # In practice, this test would be mocked
-        with patch("backend.rag.llm.get_llm") as mock_get_llm:
+        with patch("backend.providers.get_llm") as mock_get_llm:
             mock_llm = MagicMock()
             mock_llm.invoke.return_value = MagicMock(content="rewritten query")
             mock_get_llm.return_value = mock_llm

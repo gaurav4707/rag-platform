@@ -16,12 +16,12 @@ It should always remain synchronized with the codebase.
 
 **Current Phase**
 
-Milestone 3 — Retrieval Intelligence
+Milestone 3 — Retrieval Intelligence (Complete)
 
 **Overall Progress**
 
 ```text
-████████████████░░░░ 80%
+████████████████████ 100%
 ```
 
 ---
@@ -32,7 +32,7 @@ Milestone 3 — Retrieval Intelligence
 |-----------|--------|
 | 1. Backend Foundation | ✅ Completed |
 | 2. Frontend Foundation | ✅ Completed |
-| 3. Retrieval Intelligence | 🚧 In Progress (MMR, metadata filtering done) |
+| 3. Retrieval Intelligence | ✅ Completed |
 | 4. Agent Foundations | ✅ Completed |
 | 5. User Experience | ⏳ Planned |
 | 6. Advanced Agentic RAG | ⏳ Planned |
@@ -139,43 +139,44 @@ Milestone 3 — Retrieval Intelligence
 
 ---
 
-# Milestone 3 — Retrieval Intelligence 🚧
+# Milestone 3 — Retrieval Intelligence ✅
 
 ## Goal
 
 Improve answer quality before expanding the Agent.
 
-## In Progress
+## Completed
 
 ### Retrieval
 
-- [ ] Hybrid Search
+- [x] Hybrid Search (Dense + BM25 with Reciprocal Rank Fusion)
 - [x] Maximum Marginal Relevance (MMR)
 - [x] Metadata filtering
-- [ ] Query rewriting
-- [ ] Multi-query retrieval
+- [x] Query rewriting (LLM-based with heuristic skip)
+- [x] Retrieval Strategy Pattern (Similarity, MMR, Hybrid)
 
 ### Ranking
 
-- [ ] Cross-encoder reranking
-- [ ] Score normalization
-- [ ] Score thresholding
+- [x] Cross-encoder reranking (local HF model)
+- [x] RetrievalConfig with centralized configuration
+- [x] Retrieval Metadata for debugging/evaluation
 
 ### Prompting
 
-- [ ] Prompt optimization
-- [ ] Context formatting
-- [ ] Better citation grounding
+- [x] Prompt optimization (structured sections, deduplication, truncation)
+- [x] Context formatting with rich metadata
+- [x] Better citation grounding
 
 ### Evaluation
 
-- [ ] Retrieval benchmarking
-- [ ] Prompt evaluation
-- [ ] Retrieval inspection utilities
+- [x] Retrieval benchmarking (CLI-based offline evaluation)
+- [x] Prompt evaluation
+- [x] Retrieval inspection utilities
+- [x] Metrics: Precision@K, Recall@K, Hit Rate, MRR, MAP, NDCG, F1
 
 ---
 
-# Milestone 4 — Agent Foundations
+# Milestone 4 — Agent Foundations ✅
 
 ## Goal
 
@@ -184,7 +185,7 @@ Transform the current RAG pipeline into a robust Agentic RAG architecture.
 ### Agent
 
 - [x] Stable agent implementation
-- [ ] Provider-independent agent layer
+- [x] Provider-independent agent layer (via provider abstraction)
 - [x] Tool registry
 - [x] Tool execution tracing
 - [x] Streaming tool events
@@ -239,6 +240,7 @@ Transform the current RAG pipeline into a robust Agentic RAG architecture.
 - [ ] Parent document retrieval
 - [ ] Context compression
 - [ ] Adaptive chunking
+- [ ] Multi-query retrieval
 
 ## Agent
 
@@ -253,7 +255,7 @@ Transform the current RAG pipeline into a robust Agentic RAG architecture.
 - [ ] Multiple LLM providers
 - [ ] Multiple embedding providers
 - [ ] Multiple vector databases
-- [ ] Conversation memory
+- [ ] Conversation memory (SQLite)
 - [ ] OCR
 - [ ] Background indexing
 - [ ] Monitoring
@@ -277,14 +279,20 @@ Future ideas intentionally postponed.
 
 ---
 
-# Current Sprint
+# Current Sprint (Priority Order)
 
-Current focus:
+Current focus (highest priority first):
 
-1. Implement query rewriting.
-2. Implement hybrid search.
-3. Implement reranking.
-4. Add retrieval evaluation benchmarks.
+1. **API Integration Tests** — End-to-end tests for upload/chat/stream/delete endpoints
+2. **Docker + Docker Compose** — Containerize backend and frontend
+3. **CI/CD Pipeline** — GitHub Actions: lint, test, build
+4. **Structured Logging** — JSON logs with request IDs
+5. **Health Checks with Dependencies** — Verify ChromaDB/LLM connectivity
+6. **Conversation Memory** — SQLite-backed chat history with context injection
+7. **Observability** — Request tracing, metrics endpoint
+8. **Frontend: Settings Page** — Configure retrieval parameters
+9. **Frontend: Conversation History** — Persist and display chat sessions
+10. **Authentication** — API key based auth (future)
 
 ---
 

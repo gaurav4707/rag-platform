@@ -35,10 +35,20 @@ UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 CHROMA_COLLECTION_NAME = "example_collection"
 
 # -----------------------------------------------------------------------------
-# Models
+# Provider Selection
 # -----------------------------------------------------------------------------
 
+# Embedding Provider
+EMBEDDING_PROVIDER = "huggingface"
 EMBEDDING_MODEL = "BAAI/bge-base-en-v1.5"
+EMBEDDING_LOCAL_FILES_ONLY = True
+
+# LLM Provider
+LLM_PROVIDER = "groq"
+LLM_MODEL = "llama-3.1-8b-instant"
+LLM_MAX_TOKENS = None
+LLM_TIMEOUT = None
+LLM_MAX_RETRIES = 2
 
 # -----------------------------------------------------------------------------
 # Text Splitting
@@ -51,4 +61,4 @@ CHUNK_OVERLAP = 200
 # Retrieval
 # -----------------------------------------------------------------------------
 
-TOP_K = 8
+TOP_K = 4

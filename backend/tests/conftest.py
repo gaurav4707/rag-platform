@@ -19,9 +19,16 @@ class _MockEmbeddings:
         return [self.embed_query(t) for t in texts]
 
 
-_mock_mod = types.ModuleType("backend.rag.embeddings")
-_mock_mod.embeddings = _MockEmbeddings()
-sys.modules["backend.rag.embeddings"] = _mock_mod
+# Mock the providers module for tests
+_mock_embeddings_mod = types.ModuleType("backend.providers.embeddings")
+_mock_embeddings_mod.get_embedding_provider = lambda: _MockEmbeddings()
+sys.modules["backend.providers.embeddings"] = _mock_embeddings_mod
+
+# Also mock the providers __init__ to export get_embedding_provider
+_mock_providers_mod = types.ModuleType("backend.providers")
+_mock_providers_mod.get_embedding_provider = _mock_embeddings_mod.get_embedding_provider
+_mock_providers_mod.get_llm = lambda: None  # Will be patched per test
+sys.modules["backend.providers"] = _mock_providers_mod
 
 
 class _DummyEmbeddings:

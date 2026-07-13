@@ -452,6 +452,7 @@ Responsibilities
 - Return top-K reranked chunks
 
 The Reranker:
+
 - Runs after retrieval strategy, before prompt construction
 - Never performs retrieval or accesses the vector store
 - Only reorders existing chunks
@@ -650,6 +651,8 @@ ChatResult(
 The Chat API serializes the ChatResult into the public HTTP response.
 
 This separation keeps the API layer independent of the Agent implementation.
+
+---
 
 ---
 

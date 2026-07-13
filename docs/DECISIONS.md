@@ -1372,19 +1372,84 @@ These trade-offs are acceptable because:
 
 ---
 
-# Decision Guidelines
+# ADR-020
 
-A new decision should be recorded when:
+## Title
 
-- The project architecture changes.
-- A major dependency is introduced or replaced.
-- A significant trade-off is made.
-- Multiple valid approaches exist and one is selected.
-- Future contributors would benefit from understanding the reasoning.
+Provider Abstraction Layer for Embeddings and LLM
 
-Small implementation details should not be recorded here.
+**Status**
 
-This document should explain **why** decisions were made, not **how** they were implemented.
+Accepted
+
+### Context
+
+The original implementation created concrete provider instances directly inside modules:
+- `embeddings.py` instantiated `HuggingFaceEmbeddings` at module level
+- `llm.py` instantiated `ChatGroq` inside `get_llm()`
+
+This violated the provider-agnostic architecture (ADR-007) and made it impossible to:
+- Switch providers without modifying RAG module code
+- Test with mock providers
+- Add new providers without touching core RAG logic
+
+### Decision
+
+Create a dedicated `backend/providers/` package with factory functions:
+
+1. **Provider Registry Pattern**: Dictionary mapping provider name → factory function
+2. **Lazy Singleton**: `@functools.lru_cache(maxsize=1)` on factory functions
+3. **Configuration-Driven**: Provider selection via `config.py` constants (`EMBEDDING_PROVIDER`, `LLM_PROVIDER`)
+4. **Extensible Registration**: `register_embedding_provider()` and `register_llm_provider()` for future additions
+5. **Custom Exception**: `ProviderConfigurationError` for invalid provider configuration
+
+Architecture:
+```
+backend/providers/
+├── __init__.py           # Exports factories + exception
+├── embeddings.py         # get_embedding_provider() + registry
+├── llm.py                # get_llm() + registry
+└── exceptions.py         # ProviderConfigurationError
+```
+
+RAG modules now import from `backend.providers`:
+- `vector_store.py` uses `get_embedding_provider()`
+- `agent.py` uses `get_llm()`
+- `query_rewriter.py` uses `get_llm()`
+
+### Alternatives Considered
+
+#### 1. Keep Direct Instantiation
+- Pro: Simple
+- Con: Violates ADR-007; cannot swap providers; hard to test
+
+#### 2. Full Abstract Factory with Base Classes
+- Pro: Formal interface contracts
+- Con: Overhead for current single-provider needs; premature abstraction
+
+#### 3. Dependency Injection Container
+- Pro: Formal DI
+- Con: Heavy framework; overkill for this project
+
+### Consequences
+
+**Advantages:**
+- Provider selection centralized in `config.py`
+- Adding new providers only requires registry registration
+- RAG modules remain unchanged when providers change
+- Tests can mock at provider factory level
+- Consistent with existing registry patterns (reranker, query rewriter, retrieval strategies)
+
+**Trade-offs:**
+- Additional `backend/providers/` package
+- Factory functions instead of direct module-level instances
+- Configuration must include provider name constants
+
+### Revisit When
+
+- Second embedding provider is added
+- Second LLM provider is added
+- Need for per-request provider selection arises
 
 ---
 

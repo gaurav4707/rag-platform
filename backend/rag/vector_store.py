@@ -4,7 +4,7 @@ from langchain_core.documents import Document
 import numpy as np
 
 from backend.config import CHROMA_COLLECTION_NAME, CHROMA_DB_DIR
-from backend.rag.embeddings import embeddings
+from backend.providers import get_embedding_provider
 
 __all__ = [
     "similarity_search",
@@ -28,7 +28,7 @@ def _get_collection() -> Chroma:
     if _collection is None:
         _collection = Chroma(
             collection_name=CHROMA_COLLECTION_NAME,
-            embedding_function=embeddings,
+            embedding_function=get_embedding_provider(),
             persist_directory=str(CHROMA_DB_DIR),
         )
     return _collection
@@ -117,7 +117,7 @@ def mmr_search_with_scores(
 ) -> list[tuple]:
     """Perform MMR search and return (Document, distance) tuples."""
     store = _get_collection() if collection is None else collection
-    embedding_vector = embeddings.embed_query(query)
+    embedding_vector = get_embedding_provider().embed_query(query)
     result = store._collection.query(
         query_embeddings=[embedding_vector],
         n_results=fetch_k,

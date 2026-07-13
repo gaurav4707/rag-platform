@@ -14,9 +14,9 @@ The project is designed primarily for learning modern AI engineering practices w
 
 ---
 
-# 2. Objectives
+## 2. Objectives
 
-## Primary Objectives
+### Primary Objectives
 
 - Learn Agentic RAG architecture end to end.
 - Understand Retrieval-Augmented Generation from first principles.
@@ -26,7 +26,7 @@ The project is designed primarily for learning modern AI engineering practices w
 - Understand every architectural decision instead of relying on framework abstractions.
 - Maintain a provider-agnostic architecture.
 
-## Secondary Objectives
+### Secondary Objectives
 
 - Produce a portfolio-quality project.
 - Create a reusable Agentic RAG framework.
@@ -35,7 +35,7 @@ The project is designed primarily for learning modern AI engineering practices w
 
 ---
 
-# 3. Current Scope (MVP)
+## 3. Current Scope (MVP)
 
 ## Backend
 
@@ -65,10 +65,14 @@ Implemented
 - **Retrieval Metadata for debugging/evaluation**
 - **Query Rewriting**
 - **Cross-Encoder Reranking**
+- **BM25 Lexical Search**
+- **Reciprocal Rank Fusion (RRF)**
+- **Offline Retrieval Evaluation Framework**
+- **Provider Abstraction Layer (backend/providers/)**
 
 In Progress
 
-- Retrieval evaluation
+- Conversation memory with SQLite
 
 ---
 
@@ -92,7 +96,7 @@ Planned
 
 ---
 
-# 4. Out of Scope (MVP)
+## 4. Out of Scope (MVP)
 
 The following capabilities are intentionally postponed:
 
@@ -110,7 +114,7 @@ These features may be introduced in later milestones.
 
 ---
 
-# 5. Target Users
+## 5. Target Users
 
 Current Version
 
@@ -126,7 +130,7 @@ Future
 
 ---
 
-# 6. Technology Stack
+## 6. Technology Stack
 
 ## Backend
 
@@ -134,8 +138,10 @@ Future
 - FastAPI
 - LangChain
 - ChromaDB
-- HuggingFace Embeddings
-- Groq (current LLM provider)
+- HuggingFace Embeddings (BAAI/bge-base-en-v1.5)
+- Groq (current LLM provider: llama-3.1-8b-instant)
+- rank-bm25 (BM25 lexical search)
+- sentence-transformers (Cross-encoder reranking)
 - LangGraph (future evaluation)
 - SQLite (future)
 
@@ -148,7 +154,7 @@ Future
 
 ---
 
-# 7. Project Milestones
+## 7. Project Milestones
 
 ---
 
@@ -197,7 +203,7 @@ Completed
 
 ---
 
-## Milestone 3 — Retrieval Intelligence
+## Milestone 3 — Retrieval Intelligence ✅
 
 Goal
 
@@ -216,6 +222,9 @@ Completed
 - **Cross-Encoder Reranking**
 - **Prompt Improvements**
 - **Offline Retrieval Evaluation Framework**
+- **BM25 Lexical Search**
+- **Reciprocal Rank Fusion (RRF)**
+- **Provider Abstraction Layer (backend/providers/)**
 
 Planned
 
@@ -223,7 +232,7 @@ Planned
 
 ---
 
-## Milestone 4 — Agent Foundations
+## Milestone 4 — Agent Foundations ✅
 
 Goal
 
@@ -256,7 +265,7 @@ Future Tools
 
 ---
 
-## Milestone 5 — User Experience
+## Milestone 5 — User Experience 🚧
 
 Deliverables
 
@@ -270,7 +279,7 @@ Deliverables
 
 ---
 
-## Milestone 6 — Advanced Agentic RAG
+## Milestone 6 — Advanced Agentic RAG ⏳
 
 Goal
 
@@ -304,7 +313,7 @@ Possible additions
 
 ---
 
-# 8. Design Principles
+## 8. Design Principles
 
 The project should always prioritize
 
@@ -319,7 +328,7 @@ The project should always prioritize
 
 ---
 
-# 9. Success Criteria
+## 9. Success Criteria
 
 The MVP is complete when a user can
 
@@ -333,7 +342,7 @@ The MVP is complete when a user can
 
 ---
 
-# 10. Long-Term Vision
+## 10. Long-Term Vision
 
 The project should evolve into a reusable **Agentic RAG Platform** rather than a single-purpose chatbot.
 
