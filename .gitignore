@@ -64,3 +64,5 @@ pnpm-debug.log*
 
 backend/storage/uploads/
 backend/storage/chroma_langchain_db
+.playwright-mcp/
+benchmark_results/
