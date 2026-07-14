@@ -439,6 +439,43 @@ curl -X POST http://localhost:8000/chat \
 
 ---
 
+## Developer CLI Tools
+
+### debug_document
+
+Inspect an indexed document's metadata, chunks, and validation status. This is a **read-only** diagnostic tool — it never modifies storage, never invokes the LLM, and never performs retrieval.
+
+```bash
+# By document ID (human-readable output)
+uv run python -m backend.cli.debug_document --document-id <UUID>
+
+# By original filename
+uv run python -m backend.cli.debug_document --filename "example.pdf"
+
+# Machine-readable JSON output
+uv run python -m backend.cli.debug_document --document-id <UUID> --json
+```
+
+**Options:**
+- `--document-id`, `-d` — Document UUID (mutually exclusive with `--filename`)
+- `--filename`, `-f` — Original PDF filename (mutually exclusive with `--document-id`)
+- `--json` — Output JSON instead of formatted report
+
+**Output includes:**
+- Document ID, filename, upload path, disk existence
+- Page count, chunk count, vector count
+- Embedding provider class and model name
+- All metadata keys found on chunks
+- Sample chunk (page, chunk index, character count, first 300 chars)
+- Validation checklist with ✅/❌ indicators
+
+**Exit Codes:**
+- `0` — Success (all validations pass)
+- `1` — Validation failure (document found but checks fail)
+- `2` — Document not found (neither ID nor filename matches)
+
+---
+
 ## Future Enhancements
 
 <details>
