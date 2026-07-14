@@ -66,3 +66,5 @@ backend/storage/uploads/
 backend/storage/chroma_langchain_db
 .playwright-mcp/
 benchmark_results/
+.skills/
+react-1.0.0/
