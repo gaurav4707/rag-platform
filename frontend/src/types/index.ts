@@ -19,6 +19,7 @@ export interface UploadResponse {
   document_id: string;
   filename: string;
   status: string;
+  already_indexed?: boolean;
 }
 
 export interface Document {

@@ -12,9 +12,21 @@ const ERROR_MESSAGES: Record<string, { title: string; description: string }> = {
     title: "Invalid File",
     description: "Only PDF documents are supported.",
   },
-  DOCUMENT_EMPTY: {
+  EMPTY_PDF: {
     title: "Empty PDF",
     description: "The uploaded PDF contains no readable text.",
+  },
+  CORRUPTED_PDF: {
+    title: "Invalid PDF",
+    description: "The file appears to be corrupted or unreadable.",
+  },
+  FILE_TOO_LARGE: {
+    title: "File Too Large",
+    description: "Choose a smaller PDF.",
+  },
+  DOCUMENT_ALREADY_EXISTS: {
+    title: "Document Already Exists",
+    description: "This PDF has already been uploaded.",
   },
   DOCUMENT_NOT_FOUND: {
     title: "Document Not Found",
@@ -24,12 +36,8 @@ const ERROR_MESSAGES: Record<string, { title: string; description: string }> = {
     title: "Document Processing Failed",
     description: "The document could not be indexed.",
   },
-  DOCUMENT_TOO_LARGE: {
-    title: "File Too Large",
-    description: "Choose a smaller PDF.",
-  },
   NETWORK_ERROR: {
-    title: "Network Error",
+    title: "Connection Lost",
     description: "Unable to reach the server.",
   },
   VECTOR_STORE_ERROR: {
@@ -49,7 +57,7 @@ const DEFAULT_ERROR: { title: string; description: string } = {
 
 function detectSpecificError(message: string): { title: string; description: string } | null {
   const msg = message.toLowerCase();
-  if (msg.includes("embeddings to be non-empty") || msg.includes("non-empty list or numpy array")) {
+  if (msg.includes("embeddings to be non-empty") || msg.includes("non-empty list or numpy array") || msg.includes("pdf contains no extractable text")) {
     return {
       title: "Empty PDF",
       description: "The uploaded PDF contains no readable text.",

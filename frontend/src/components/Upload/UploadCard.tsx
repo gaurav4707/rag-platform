@@ -4,7 +4,7 @@ import { useToast } from "../../hooks/useToast";
 import { notifyUploadFailed, notifyUploadCancelled } from "../../services/notifications";
 import type { UploadProgressCallback } from "../../services/documentApi";
 
-export type UploadStatus = "idle" | "uploading" | "processing" | "success" | "error";
+export type UploadStatus = "idle" | "uploading" | "processing" | "error";
 
 interface UploadCardProps {
   onUpload: (file: File, onProgress?: UploadProgressCallback) => Promise<void>;
@@ -127,8 +127,10 @@ export function UploadCard({ onUpload }: UploadCardProps) {
 
         setStatus("processing");
 
-        setStatus("success");
-        handleAutoReset(1500);
+        // Success - reset to idle, Sidebar toast will show success
+        setStatus("idle");
+        setDisplayProgress(0);
+        setHasRealProgress(false);
 
       } catch (err) {
         console.error("Upload failed:", err);
@@ -226,16 +228,6 @@ export function UploadCard({ onUpload }: UploadCardProps) {
           <div className="flex items-center gap-2.5">
             <div className="h-5 w-5 animate-spin rounded-full border-2 border-accent-500 border-t-transparent" aria-hidden="true" />
             <span className="text-sm text-surface-500 dark:text-surface-400">Processing document...</span>
-          </div>
-        );
-      case "success":
-        return (
-          <div className="flex flex-col items-center gap-1.5 text-green-600 dark:text-green-400">
-            <svg className="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden="true">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12c0 4.97-4.03 9-9 9s-9-4.03-9-9 4.03-9 9-9 9 4.03 9 9z" />
-            </svg>
-            <p className="text-sm font-medium">Ready to chat</p>
-            <p className="text-xs text-green-500 dark:text-green-400">Document indexed successfully</p>
           </div>
         );
       case "error":

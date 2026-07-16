@@ -28,6 +28,8 @@ CHROMA_DB_DIR.mkdir(parents=True, exist_ok=True)
 UPLOAD_DIR = STORAGE_DIR / "uploads"
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
+MAX_FILE_SIZE = 50 * 1024 * 1024  # 50 MB
+
 # -----------------------------------------------------------------------------
 # ChromaDB
 # -----------------------------------------------------------------------------

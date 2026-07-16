@@ -1,5 +1,6 @@
 from fastapi import APIRouter, UploadFile, File, HTTPException, status
 
+from backend.config import MAX_FILE_SIZE
 from backend.models.schemas import UploadResponse
 from backend.services.document_service import process_upload
 from backend.api.errors import AppError, ERROR_CODES
@@ -25,13 +26,16 @@ async def upload_document(file: UploadFile = File(...)):
             http_status=status.HTTP_400_BAD_REQUEST,
         )
 
+    if len(content) > MAX_FILE_SIZE:
+        raise AppError(
+            ERROR_CODES["FILE_TOO_LARGE"],
+            "File size exceeds the maximum allowed limit.",
+            http_status=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+        )
+
     try:
         result = process_upload(content, file.filename)
-    except ValueError as e:
-        raise AppError(
-            ERROR_CODES["INDEXING_FAILED"],
-            str(e),
-            http_status=status.HTTP_422_UNPROCESSABLE_ENTITY,
-        )
+    except AppError:
+        raise
 
     return UploadResponse(**result)

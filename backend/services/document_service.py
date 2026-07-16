@@ -49,10 +49,22 @@ def process_upload(file_content: bytes, original_filename: str) -> dict:
     try:
         saved_path.write_bytes(file_content)
 
-        docs = load_pdf(str(saved_path))
+        try:
+            docs = load_pdf(str(saved_path))
+        except Exception as e:
+            # PyPDFLoader raises various exceptions for corrupted/unreadable PDFs
+            raise AppError(
+                ERROR_CODES["CORRUPTED_PDF"],
+                "The file appears to be corrupted or unreadable.",
+                http_status=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            ) from e
 
         if not docs:
-            raise ValueError("PDF contains no extractable text")
+            raise AppError(
+                ERROR_CODES["EMPTY_PDF"],
+                "The uploaded PDF contains no readable text.",
+                http_status=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            )
 
         for doc in docs:
             doc.metadata["document_id"] = document_id
@@ -75,8 +87,6 @@ def process_upload(file_content: bytes, original_filename: str) -> dict:
             print(f"Warning: BM25 index rebuild failed: {e}")
 
     except AppError:
-        raise
-    except ValueError:
         if saved_path.exists():
             saved_path.unlink()
         try:

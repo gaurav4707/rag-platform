@@ -25,6 +25,10 @@ export function notifyUploadCancelled(toast: ToastContextType) {
   toast.info("Upload Cancelled", "The upload was cancelled.");
 }
 
+export function notifyDuplicateUpload(toast: ToastContextType, filename: string) {
+  toast.info("Document Already Exists", `${filename} has already been uploaded.`);
+}
+
 export function notifyDeleteSuccess(toast: ToastContextType, filename: string) {
   toast.success("Document Deleted", `${filename} was removed successfully.`);
 }

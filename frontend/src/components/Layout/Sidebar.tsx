@@ -4,7 +4,7 @@ import type { Document } from "../../types";
 import { UploadCard } from "../Upload/UploadCard";
 import { DocumentList } from "../Documents/DocumentList";
 import { useToast } from "../../hooks/useToast";
-import { notifyUploadFailed, notifyDeleteSuccess, notifyDeleteFailed, notifyUploadSuccess } from "../../services/notifications";
+import { notifyUploadFailed, notifyDeleteSuccess, notifyDeleteFailed, notifyUploadSuccess, notifyDuplicateUpload } from "../../services/notifications";
 
 export function Sidebar() {
   const [documents, setDocuments] = useState<Document[]>([]);
@@ -17,16 +17,18 @@ export function Sidebar() {
     loadDocuments();
   }, []);
 
-  async function loadDocuments() {
+  async function loadDocuments(): Promise<Document[]> {
     setDocumentsLoading(true);
     setDocumentsError(null);
 
     try {
       const docs = await getDocuments();
       setDocuments(docs);
+      return docs;
     } catch (err) {
       console.error("Failed to load documents:", err);
       setDocumentsError("Failed to load documents.");
+      return [];
     } finally {
       setDocumentsLoading(false);
     }
@@ -34,9 +36,21 @@ export function Sidebar() {
 
   async function handleUpload(file: File): Promise<void> {
     try {
-      await uploadDocument(file);
-      await loadDocuments();
-      notifyUploadSuccess(toast, file.name);
+      const response = await uploadDocument(file);
+      const docs = await loadDocuments();
+      
+      // Verify the document is actually in the list before showing success
+      const docExists = docs.some((d) => d.document_id === response.document_id);
+      
+      if (response.already_indexed) {
+        notifyDuplicateUpload(toast, file.name);
+      } else if (docExists) {
+        notifyUploadSuccess(toast, file.name);
+      } else {
+        // Document not found in list after upload - this shouldn't happen
+        console.warn("Uploaded document not found in document list after refresh");
+        notifyUploadSuccess(toast, file.name);
+      }
     } catch (err) {
       console.error("Upload failed:", err);
       notifyUploadFailed(toast, err instanceof Error ? err : new Error(String(err)));
