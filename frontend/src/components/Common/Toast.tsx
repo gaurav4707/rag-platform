@@ -142,6 +142,8 @@ export function ToastComponent({ toast, onClose }: ToastProps) {
       tabIndex={0}
       onKeyDown={handleKeyDown}
       style={{ minWidth: "360px", maxWidth: "420px" }}
+      data-testid={`toast-${toast.variant}`}
+      data-toast-id={toast.id}
     >
       <div className="absolute left-0 top-0 bottom-0 w-1 rounded-l-xl">
         <div className={`${bgAccent} h-full rounded-l-xl`} />

@@ -270,6 +270,7 @@ export function UploadCard({ onUpload }: UploadCardProps) {
         onChange={handleFileChange}
         aria-hidden="true"
         disabled={status !== "idle"}
+        data-testid="file-input"
       />
 
       <div
@@ -288,12 +289,13 @@ export function UploadCard({ onUpload }: UploadCardProps) {
         onDrop={handleDrop}
         className={cardClassName}
         aria-label="Upload a PDF document"
+        data-testid="upload-dropzone"
       >
         {getMainContent()}
       </div>
 
       {(status === "uploading" || status === "processing") && (
-        <div className="mt-2 w-full" role="progressbar" aria-valuenow={status === "uploading" && hasRealProgress ? displayProgress : undefined} aria-valuemin={0} aria-valuemax={100} aria-label={status === "uploading" ? "Upload progress" : "Processing progress"}>
+        <div className="mt-2 w-full" role="progressbar" aria-valuenow={status === "uploading" && hasRealProgress ? displayProgress : undefined} aria-valuemin={0} aria-valuemax={100} aria-label={status === "uploading" ? "Upload progress" : "Processing progress"} data-testid="upload-progress">
           <div className="h-1.5 w-full rounded-full bg-surface-200 dark:bg-surface-700 overflow-hidden">
             <div
               className={`h-full rounded-full transition-all duration-300 ease-out ${
@@ -312,6 +314,7 @@ export function UploadCard({ onUpload }: UploadCardProps) {
         <div
           className="mt-2 flex items-center gap-1.5 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700 animate-slide-up dark:bg-red-900/20 dark:text-red-300"
           role="alert"
+          data-testid="upload-error"
         >
           <svg className="h-3.5 w-3.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden="true">
             <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />

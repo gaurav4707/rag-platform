@@ -39,20 +39,20 @@ export function DocumentList({
   }
 
   return (
-    <div>
+    <div data-testid="document-list">
       <div className="mb-2.5 flex items-center justify-between">
         <h3 className="text-xs font-semibold uppercase tracking-wider text-surface-500">
           Library
         </h3>
         {!loading && documents.length > 0 && (
-          <span className="text-xs font-medium text-surface-400">
+          <span className="text-xs font-medium text-surface-400" data-testid="document-count">
             {documents.length} {documents.length === 1 ? "file" : "files"}
           </span>
         )}
       </div>
 
       {loading && (
-        <div className="space-y-2" role="status" aria-label="Loading documents">
+        <div className="space-y-2" role="status" aria-label="Loading documents" data-testid="document-loading">
           {[0, 1, 2].map((i) => (
             <div
               key={i}
@@ -66,7 +66,7 @@ export function DocumentList({
       )}
 
       {!loading && !error && documents.length === 0 && (
-        <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed border-surface-200 px-4 py-6 text-center">
+        <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed border-surface-200 px-4 py-6 text-center" data-testid="document-empty">
           <svg
             className="h-6 w-6 text-surface-300"
             fill="none"
@@ -86,7 +86,7 @@ export function DocumentList({
       )}
 
       {!loading && documents.length > 0 && (
-        <ul className="space-y-1.5">
+        <ul className="space-y-1.5" data-testid="document-items">
           {documents.map((doc) => {
             const isDeleting = deletingDocumentId === doc.document_id;
 
@@ -94,6 +94,8 @@ export function DocumentList({
               <li
                 key={doc.document_id}
                 className="group flex items-center gap-2.5 rounded-lg border border-surface-200 px-3 py-2.5 transition-all duration-150 hover:border-surface-300 hover:bg-surface-50 hover:shadow-subtle"
+                data-testid={`document-item-${doc.document_id}`}
+                data-document-id={doc.document_id}
               >
                 <svg
                   className="h-4 w-4 flex-shrink-0 text-surface-400"

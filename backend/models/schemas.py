@@ -27,6 +27,7 @@ class UploadResponse(BaseModel):
     document_id: str
     filename: str
     status: str
+    already_indexed: bool = False
 
 
 class DocumentListItem(BaseModel):
