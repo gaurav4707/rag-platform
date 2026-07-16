@@ -6,9 +6,18 @@ interface MessageProps {
   content: string;
   sources?: Source[];
   isStreaming?: boolean;
+  streamInterrupted?: boolean;
+  onRetry?: () => void;
 }
 
-export function Message({ role, content, sources, isStreaming }: MessageProps) {
+export function Message({ 
+  role, 
+  content, 
+  sources, 
+  isStreaming, 
+  streamInterrupted,
+  onRetry 
+}: MessageProps) {
   const isUser = role === "user";
 
   return (
@@ -51,7 +60,37 @@ export function Message({ role, content, sources, isStreaming }: MessageProps) {
               </p>
             </div>
 
-            {sources && sources.length > 0 && !isStreaming && (
+            {streamInterrupted && onRetry && (
+              <div
+                className="mt-2 flex items-center gap-2 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800 animate-slide-up"
+                role="alert"
+              >
+                <svg
+                  className="h-4 w-4 flex-shrink-0 text-amber-500"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  strokeWidth={2}
+                  aria-hidden="true"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.008v.008H12v-.008z"
+                  />
+                </svg>
+                <span className="flex-1">Response interrupted. The connection was lost.</span>
+                <button
+                  onClick={onRetry}
+                  className="flex-shrink-0 rounded px-2 py-1 text-xs font-medium text-amber-700 underline hover:text-amber-800 focus:outline-none focus:ring-2 focus:ring-amber-400 focus:ring-offset-1"
+                  type="button"
+                >
+                  Retry
+                </button>
+              </div>
+            )}
+
+            {sources && sources.length > 0 && !isStreaming && !streamInterrupted && (
               <div className="mt-2.5 space-y-1.5">
                 <p className="px-1 text-xs font-medium uppercase tracking-wider text-surface-400">
                   Sources

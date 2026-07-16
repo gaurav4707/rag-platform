@@ -3,13 +3,15 @@ import { getDocuments, uploadDocument, deleteDocument } from "../../services/doc
 import type { Document } from "../../types";
 import { UploadCard } from "../Upload/UploadCard";
 import { DocumentList } from "../Documents/DocumentList";
+import { useToast } from "../../hooks/useToast";
+import { notifyUploadFailed, notifyDeleteSuccess, notifyDeleteFailed, notifyUploadSuccess } from "../../services/notifications";
 
 export function Sidebar() {
   const [documents, setDocuments] = useState<Document[]>([]);
   const [documentsLoading, setDocumentsLoading] = useState(true);
   const [documentsError, setDocumentsError] = useState<string | null>(null);
-  const [uploading, setUploading] = useState(false);
   const [deletingDocumentId, setDeletingDocumentId] = useState<string | null>(null);
+  const toast = useToast();
 
   useEffect(() => {
     loadDocuments();
@@ -31,25 +33,30 @@ export function Sidebar() {
   }
 
   async function handleUpload(file: File): Promise<void> {
-    setUploading(true);
     try {
       await uploadDocument(file);
       await loadDocuments();
+      notifyUploadSuccess(toast, file.name);
     } catch (err) {
       console.error("Upload failed:", err);
-    } finally {
-      setUploading(false);
+      notifyUploadFailed(toast, err instanceof Error ? err : new Error(String(err)));
+      throw err;
     }
   }
 
-  async function handleDelete(documentId: string, _filename: string): Promise<void> {
+  async function handleDelete(documentId: string, filename: string): Promise<void> {
     setDeletingDocumentId(documentId);
     try {
       await deleteDocument(documentId);
       await loadDocuments();
+      notifyDeleteSuccess(toast, filename);
     } catch (err) {
       console.error("Failed to delete document:", err);
-      setDocumentsError("Failed to delete document.");
+      notifyDeleteFailed(
+        toast,
+        err instanceof Error ? err : new Error(String(err)),
+        () => handleDelete(documentId, filename)
+      );
     } finally {
       setDeletingDocumentId(null);
     }
@@ -78,7 +85,7 @@ export function Sidebar() {
       </div>
 
       <div className="flex-1 space-y-5 overflow-y-auto scrollbar-thin px-4 py-4 lg:px-5">
-        <UploadCard onUpload={handleUpload} uploading={uploading} />
+        <UploadCard onUpload={handleUpload} />
         <DocumentList
           documents={documents}
           loading={documentsLoading}

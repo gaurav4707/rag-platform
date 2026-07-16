@@ -4,9 +4,10 @@ import type { Message as MessageType } from "../../types";
 
 interface ChatWindowProps {
   messages: MessageType[];
+  onRetry?: () => void;
 }
 
-export function ChatWindow({ messages }: ChatWindowProps) {
+export function ChatWindow({ messages, onRetry }: ChatWindowProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -52,6 +53,8 @@ export function ChatWindow({ messages }: ChatWindowProps) {
               content={msg.content}
               sources={msg.sources}
               isStreaming={msg.isStreaming}
+              streamInterrupted={msg.streamInterrupted}
+              onRetry={msg.streamInterrupted ? onRetry : undefined}
             />
           ))}
           <div ref={bottomRef} />

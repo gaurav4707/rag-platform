@@ -37,6 +37,7 @@ export interface Message {
   content: string;
   sources?: Source[];
   isStreaming?: boolean;
+  streamInterrupted?: boolean;
 }
 
 export interface StreamCallbacks {

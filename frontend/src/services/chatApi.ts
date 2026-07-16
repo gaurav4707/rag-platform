@@ -14,9 +14,16 @@ export function sendMessage(request: ChatRequest): Promise<ChatResponse> {
   });
 }
 
+export interface StreamMessageOptions {
+  message: string;
+  callbacks: StreamCallbacks;
+  signal?: AbortSignal;
+}
+
 export async function streamMessage(
   message: string,
   callbacks: StreamCallbacks,
+  signal?: AbortSignal,
 ): Promise<void> {
   const { onToken, onDone, onError } = callbacks;
 
@@ -25,6 +32,7 @@ export async function streamMessage(
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ message }),
+      signal,
     });
 
     if (!response.ok) {
@@ -40,6 +48,10 @@ export async function streamMessage(
     let buffer = "";
 
     while (true) {
+      if (signal?.aborted) {
+        throw new DOMException("Aborted", "AbortError");
+      }
+
       const { done, value } = await reader.read();
       if (done) break;
 
@@ -68,6 +80,9 @@ export async function streamMessage(
       }
     }
   } catch (err) {
+    if (err instanceof DOMException && err.name === "AbortError") {
+      return;
+    }
     onError(err instanceof Error ? err : new Error(String(err)));
   }
 }

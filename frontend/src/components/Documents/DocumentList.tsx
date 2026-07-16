@@ -1,5 +1,7 @@
+import { useState } from "react";
 import type { Document } from "../../types";
 import { Spinner } from "../Common/Spinner";
+import { ConfirmationDialog } from "../Common";
 
 interface DocumentListProps {
   documents: Document[];
@@ -16,9 +18,24 @@ export function DocumentList({
   deletingDocumentId,
   onDelete,
 }: DocumentListProps) {
-  function handleClick(doc: Document) {
-    if (!window.confirm(`Delete '${doc.filename}'?`)) return;
-    onDelete(doc.document_id, doc.filename);
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [docToDelete, setDocToDelete] = useState<Document | null>(null);
+
+  function handleDeleteClick(doc: Document) {
+    setDocToDelete(doc);
+    setDialogOpen(true);
+  }
+
+  function handleConfirmDelete() {
+    if (!docToDelete) return;
+    setDialogOpen(false);
+    onDelete(docToDelete.document_id, docToDelete.filename);
+    setDocToDelete(null);
+  }
+
+  function handleCancelDelete() {
+    setDialogOpen(false);
+    setDocToDelete(null);
   }
 
   return (
@@ -45,29 +62,6 @@ export function DocumentList({
               <div className="h-3.5 flex-1 rounded skeleton-shimmer animate-shimmer" />
             </div>
           ))}
-        </div>
-      )}
-
-      {error && (
-        <div
-          className="flex items-center gap-1.5 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700"
-          role="alert"
-        >
-          <svg
-            className="h-3.5 w-3.5 flex-shrink-0"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            strokeWidth={2}
-            aria-hidden="true"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z"
-            />
-          </svg>
-          {error}
         </div>
       )}
 
@@ -125,7 +119,7 @@ export function DocumentList({
 
                 <button
                   type="button"
-                  onClick={() => handleClick(doc)}
+                  onClick={() => handleDeleteClick(doc)}
                   disabled={isDeleting}
                   className="flex-shrink-0 rounded-md p-1 text-surface-300 transition-colors hover:bg-red-50 hover:text-red-600 focus:outline-none focus:ring-2 focus:ring-red-400 focus:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-50 group-hover:text-surface-400"
                   aria-label={`Delete ${doc.filename}`}
@@ -154,6 +148,17 @@ export function DocumentList({
           })}
         </ul>
       )}
+
+      <ConfirmationDialog
+        isOpen={dialogOpen}
+        title="Delete document?"
+        message={docToDelete ? `Delete "${docToDelete.filename}"? This action cannot be undone.` : ""}
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        variant="danger"
+        onConfirm={handleConfirmDelete}
+        onCancel={handleCancelDelete}
+      />
     </div>
   );
 }
