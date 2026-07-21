@@ -5,6 +5,7 @@ Orchestrates multi-tool execution loop with safety limits and structured results
 
 from __future__ import annotations
 
+import uuid
 import time
 import logging
 from dataclasses import dataclass, field
@@ -189,11 +190,19 @@ class ToolExecutor:
             )
 
         try:
-            # Use LangChain's standard invoke method
-            result = tool.invoke(tool_input)
+            # Use ToolCall format so LangChain returns a ToolMessage with artifact
+            tool_call = {
+                "type": "tool_call",
+                "name": tool_name,
+                "args": tool_input,
+                "id": str(uuid.uuid4()),
+            }
+            result = tool.invoke(tool_call)
 
-            # Handle different return formats
-            if isinstance(result, tuple) and len(result) == 2:
+            if isinstance(result, ToolMessage):
+                content = result.content
+                artifact = result.artifact
+            elif isinstance(result, tuple) and len(result) == 2:
                 content, artifact = result
             else:
                 content = str(result)
@@ -228,7 +237,15 @@ class ToolExecutor:
         """Build final ChatResult from conversation state."""
         # Merge all retrieval results for citations
         merged_retrieval = merge_retrieval_results(state.retrieval_results)
-        sources = build_sources(merged_retrieval) if merged_retrieval else []
+        if isinstance(merged_retrieval, RetrievalResult):
+            sources = build_sources(merged_retrieval)
+        else:
+            if merged_retrieval is not None:
+                logger.warning(
+                    "Expected RetrievalResult for citations, got %s. Skipping citation generation.",
+                    type(merged_retrieval).__name__,
+                )
+            sources = []
 
         logger.debug(
             "Final result: answer_len=%d, sources=%d, tool_calls=%d",
@@ -246,7 +263,15 @@ class ToolExecutor:
     def _build_error_result(self, state: ConversationState, error_msg: str) -> ChatResult:
         """Build ChatResult for error cases."""
         merged_retrieval = merge_retrieval_results(state.retrieval_results)
-        sources = build_sources(merged_retrieval) if merged_retrieval else []
+        if isinstance(merged_retrieval, RetrievalResult):
+            sources = build_sources(merged_retrieval)
+        else:
+            if merged_retrieval is not None:
+                logger.warning(
+                    "Expected RetrievalResult for citations, got %s. Skipping citation generation.",
+                    type(merged_retrieval).__name__,
+                )
+            sources = []
 
         return ChatResult(
             answer=error_msg,

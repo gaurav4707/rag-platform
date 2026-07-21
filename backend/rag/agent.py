@@ -4,7 +4,10 @@ Orchestrates tool execution and generates grounded responses using the Prompt Bu
 """
 
 import logging
+import uuid
 from typing import Any, AsyncGenerator
+
+from langchain_core.messages import ToolMessage
 
 from backend.models.rag_models import ChatResult, RetrievalResult, SourceItem
 from backend.rag.tool_executor import ToolExecutor, ConversationState, ToolExecutionResult, get_tool_executor
@@ -152,9 +155,19 @@ def _execute_tool_direct(tool_map: dict, tool_name: str, tool_input: dict) -> To
         )
 
     try:
-        result = tool.invoke(tool_input)
+        # Use ToolCall format so LangChain returns a ToolMessage with artifact
+        tool_call = {
+            "type": "tool_call",
+            "name": tool_name,
+            "args": tool_input,
+            "id": str(uuid.uuid4()),
+        }
+        result = tool.invoke(tool_call)
 
-        if isinstance(result, tuple) and len(result) == 2:
+        if isinstance(result, ToolMessage):
+            content = result.content
+            artifact = result.artifact
+        elif isinstance(result, tuple) and len(result) == 2:
             content, artifact = result
         else:
             content = str(result)
@@ -201,7 +214,15 @@ async def _stream_final_answer(
 
     # Yield final metadata with sources
     merged_retrieval = merge_retrieval_results(state.retrieval_results)
-    sources = build_sources(merged_retrieval) if merged_retrieval else []
+    if isinstance(merged_retrieval, RetrievalResult):
+        sources = build_sources(merged_retrieval)
+    else:
+        if merged_retrieval is not None:
+            logger.warning(
+                "Expected RetrievalResult for citations, got %s. Skipping citation generation.",
+                type(merged_retrieval).__name__,
+            )
+        sources = []
     yield "metadata", {
         "sources": [
             {
@@ -222,7 +243,15 @@ async def _stream_error_result(
 ) -> AsyncGenerator[tuple[str, object], None]:
     """Stream error result with metadata."""
     merged_retrieval = merge_retrieval_results(state.retrieval_results)
-    sources = build_sources(merged_retrieval) if merged_retrieval else []
+    if isinstance(merged_retrieval, RetrievalResult):
+        sources = build_sources(merged_retrieval)
+    else:
+        if merged_retrieval is not None:
+            logger.warning(
+                "Expected RetrievalResult for citations, got %s. Skipping citation generation.",
+                type(merged_retrieval).__name__,
+            )
+        sources = []
 
     # Yield error as final message
     message_chunk = type("MessageChunk", (), {

@@ -676,3 +676,196 @@ class TestIntegration:
         result = invoke("What documents do I have about API design?")
         assert isinstance(result, ChatResult)
         assert len(result.tool_calls) >= 1
+
+
+# =============================================================================
+# Retrieval Result Preservation Tests
+# =============================================================================
+
+class TestRetrievalResultPreservation:
+    """Tests for RetrievalResult artifact preservation."""
+
+    @pytest.fixture(autouse=True)
+    def mock_llm(self, clear_llm_cache):
+        """Mock the LLM for preservation tests."""
+        with patch("backend.rag.tool_executor.get_llm") as mock_get_llm:
+            mock_llm = MagicMock()
+            mock_get_llm.return_value = mock_llm
+            yield mock_llm
+
+    def test_direct_tool_execution_preserves_retrieval_result(self, mock_retrieval_result, mock_tool_executor):
+        """Test _execute_tool returns RetrievalResult as artifact."""
+        executor = mock_tool_executor
+        retrieve_tool = executor.tool_map["retrieve_context"]
+
+        with patch.object(retrieve_tool, 'func') as mock_func:
+            mock_func.return_value = ("serialized", mock_retrieval_result)
+
+            result = executor._execute_tool("retrieve_context", {"query": "test"})
+
+            assert result.success is True
+            assert isinstance(result.artifact, RetrievalResult)
+            assert result.artifact is mock_retrieval_result
+            assert result.content == "serialized"
+
+    def test_list_documents_does_not_corrupt_retrieval_state(self, mock_llm):
+        """Test list_documents does not add to retrieval state."""
+        mock_response1 = AIMessage(content="", tool_calls=[
+            {"name": "list_documents", "args": {}, "id": "call_1"}
+        ])
+        mock_response2 = AIMessage(content="Documents listed.")
+        mock_llm.bind_tools.return_value.invoke.side_effect = [mock_response1, mock_response2]
+
+        with patch("backend.rag.tools.list_documents.list_indexed_documents") as mock_list:
+            mock_list.return_value = [
+                {"document_id": "doc1", "filename": "test.pdf", "status": "indexed"}
+            ]
+
+            executor = get_tool_executor()
+            result = executor.execute("List my documents")
+
+            assert isinstance(result, ChatResult)
+            assert len(result.sources) == 0
+            assert len(result.tool_calls) == 1
+            assert result.tool_calls[0]["tool_name"] == "list_documents"
+
+    def test_search_by_filename_does_not_corrupt_retrieval_state(self, mock_llm):
+        """Test search_by_filename does not add to retrieval state."""
+        mock_response1 = AIMessage(content="", tool_calls=[
+            {"name": "search_by_filename", "args": {"filename": "test"}, "id": "call_1"}
+        ])
+        mock_response2 = AIMessage(content="Search completed.")
+        mock_llm.bind_tools.return_value.invoke.side_effect = [mock_response1, mock_response2]
+
+        with patch("backend.rag.tools.search_by_filename.search_documents_by_filename") as mock_search:
+            mock_search.return_value = [
+                {"document_id": "doc1", "filename": "test.pdf", "file_hash": "h1", "status": "indexed"}
+            ]
+
+            executor = get_tool_executor()
+            result = executor.execute("Search test")
+
+            assert isinstance(result, ChatResult)
+            assert len(result.sources) == 0
+            assert len(result.tool_calls) == 1
+            assert result.tool_calls[0]["tool_name"] == "search_by_filename"
+
+    def test_multi_tool_keeps_retrieval_intact(self, mock_retrieval_result, mock_llm):
+        """Test multi-tool sequence preserves retrieval state."""
+        mock_response1 = AIMessage(content="", tool_calls=[
+            {"name": "search_by_filename", "args": {"filename": "arch"}, "id": "call_1"}
+        ])
+        mock_response2 = AIMessage(content="", tool_calls=[
+            {"name": "retrieve_context", "args": {"query": "architecture"}, "id": "call_2"}
+        ])
+        mock_response3 = AIMessage(content="Summary of architecture doc.")
+        mock_llm.bind_tools.return_value.invoke.side_effect = [
+            mock_response1, mock_response2, mock_response3
+        ]
+
+        with patch("backend.rag.tools.search_by_filename.search_documents_by_filename") as mock_search:
+            mock_search.return_value = [
+                {"document_id": "doc1", "filename": "arch.pdf", "file_hash": "h1", "status": "indexed"}
+            ]
+
+            executor = get_tool_executor()
+            retrieve_tool = executor.tool_map["retrieve_context"]
+            with patch.object(retrieve_tool, 'func') as mock_func:
+                mock_func.return_value = ("serialized", mock_retrieval_result)
+                result = executor.execute("Summarize arch.pdf")
+
+                assert isinstance(result, ChatResult)
+                assert len(result.tool_calls) == 2
+                assert result.tool_calls[0]["tool_name"] == "search_by_filename"
+                assert result.tool_calls[1]["tool_name"] == "retrieve_context"
+                assert len(result.sources) > 0
+
+    def test_invalid_retrieval_state_skips_citations_gracefully(self, mock_llm):
+        """Test that invalid retrieval state skips citations gracefully."""
+        mock_response1 = AIMessage(content="", tool_calls=[
+            {"name": "retrieve_context", "args": {"query": "test"}, "id": "call_1"}
+        ])
+        mock_response2 = AIMessage(content="Answer with no citations.")
+        mock_llm.bind_tools.return_value.invoke.side_effect = [mock_response1, mock_response2]
+
+        executor = get_tool_executor()
+        retrieve_tool = executor.tool_map["retrieve_context"]
+
+        with patch.object(retrieve_tool, 'func') as mock_func:
+            mock_func.return_value = ("serialized text", "not a RetrievalResult")
+            result = executor.execute("Test")
+
+            assert isinstance(result, ChatResult)
+            assert len(result.sources) == 0
+            assert "Answer" in result.answer
+
+
+# =============================================================================
+# Streaming Retrieval Artifact Tests
+# =============================================================================
+
+class TestStreamingRetrievalPreservation:
+    """Tests for streaming retrieval artifact preservation."""
+
+    @pytest.fixture(autouse=True)
+    def mock_llm(self):
+        """Mock the LLM for streaming tests."""
+        with patch("backend.rag.agent.get_llm") as mock_get_llm_agent, \
+             patch("backend.rag.tool_executor.get_llm") as mock_get_llm_executor:
+            mock_llm = MagicMock()
+            mock_get_llm_agent.return_value = mock_llm
+            mock_get_llm_executor.return_value = mock_llm
+
+            async def mock_astream(prompt):
+                class Chunk:
+                    def __init__(self, content):
+                        self.content = content
+                yield Chunk("Documents ")
+                yield Chunk("listed.")
+
+            mock_llm.astream = mock_astream
+            yield mock_llm
+
+    @pytest.mark.asyncio
+    async def test_streaming_no_citations_without_retrieval(self, mock_llm):
+        """Test streaming yields empty sources when no retrieval is performed."""
+        mock_response1 = AIMessage(content="", tool_calls=[
+            {"name": "list_documents", "args": {}, "id": "call_1"}
+        ])
+        mock_response2 = AIMessage(content="Documents listed.")
+        mock_llm.bind_tools.return_value.invoke.side_effect = [mock_response1, mock_response2]
+
+        with patch("backend.rag.tools.list_documents.list_indexed_documents") as mock_list:
+            mock_list.return_value = [
+                {"document_id": "doc1", "filename": "test.pdf", "status": "indexed"}
+            ]
+
+            events = []
+            async for kind, data in stream_events("List my documents"):
+                events.append((kind, data))
+
+            meta_events = [e for e in events if e[0] == "metadata"]
+            assert len(meta_events) == 1
+            assert meta_events[0][1]["sources"] == []
+
+    @pytest.mark.asyncio
+    async def test_streaming_citations_with_retrieval(self, mock_retrieval_result, mock_llm):
+        """Test streaming yields citations when retrieve_context is used."""
+        mock_response1 = AIMessage(content="", tool_calls=[
+            {"name": "retrieve_context", "args": {"query": "test"}, "id": "call_1"}
+        ])
+        mock_response2 = AIMessage(content="Answer.")
+        mock_llm.bind_tools.return_value.invoke.side_effect = [mock_response1, mock_response2]
+
+        retrieve_tool = [t for t in get_tools() if t.name == "retrieve_context"][0]
+        with patch.object(retrieve_tool, 'func') as mock_func:
+            mock_func.return_value = ("serialized", mock_retrieval_result)
+
+            events = []
+            async for kind, data in stream_events("Test question"):
+                events.append((kind, data))
+
+            meta_events = [e for e in events if e[0] == "metadata"]
+            assert len(meta_events) == 1
+            assert len(meta_events[0][1]["sources"]) > 0
+            assert meta_events[0][1]["sources"][0]["document"] == "test1.pdf"
