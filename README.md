@@ -55,7 +55,10 @@ Frontend → API → Services → Agent → Tool Registry → Tools → Retrieve
 | 3. Retrieval Intelligence | ✅ Complete |
 | 4. Agent Foundations | ✅ Complete |
 | 5. User Experience | ✅ Complete |
-| 6. Advanced Agentic RAG | ⏳ Planned |
+| 6. Advanced Agentic RAG | ⏳ In Progress |
+| 7. Multimodal Intelligence | 📋 Planned |
+| 8. Web Search & External Knowledge | 📋 Planned |
+| 9. GraphRAG & Internal Knowledge Engine | 📋 Planned |
 
 ---
 

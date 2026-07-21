@@ -739,27 +739,71 @@ Streaming Response
 
 - Hybrid Search (implemented)
 - Query Rewriting (implemented)
-- Multi-query Retrieval
-- Context Compression
-- Parent Document Retrieval
-
----
-
-## Ranking
-
-- Cross Encoder Reranking (implemented)
-- Reciprocal Rank Fusion (implemented for Hybrid)
-- Score Thresholding
+- Cross-Encoder Reranking (implemented)
+- Multi-query Retrieval (planned)
+- Context Compression (planned)
+- Parent Document Retrieval (planned)
+- Adaptive Chunking (planned)
 
 ---
 
 ## Agent
 
-- Reflection
-- Planning
-- Multi-step reasoning
-- Tool routing
-- Tool retries
+- Reflection (planned)
+- Planning (planned)
+- Multi-step reasoning (planned)
+- Reasoning traces (planned)
+- Tool routing (planned)
+- Agent observability (planned)
+- Confidence-aware tool selection (planned)
+
+---
+
+## Tools
+
+- summarize_document (planned, Milestone 6)
+- search_by_metadata (planned, Milestone 6)
+- web_search (planned, Milestone 8)
+- graph_search (planned, Milestone 9)
+- entity_lookup (planned, Milestone 9)
+- relationship_lookup (planned, Milestone 9)
+- graph_explorer (planned, Milestone 9)
+- knowledge_summary (planned, Milestone 9)
+
+---
+
+## Multimodal (Milestone 7)
+
+- Image extraction from PDFs
+- OCR for scanned PDFs
+- Table understanding
+- Chart understanding
+- Figure understanding
+- Multimodal prompt construction
+- Visual reasoning
+- Vision provider abstraction
+
+---
+
+## Web Search (Milestone 8)
+
+- Search provider abstraction
+- Document + Web answer synthesis
+- Source attribution for web results
+- Freshness-aware answers
+- Intelligent fallback to web search
+
+---
+
+## GraphRAG (Milestone 9)
+
+- Entity extraction and relationship extraction
+- Knowledge graph construction and incremental updates
+- Graph traversal and multi-hop retrieval
+- Hybrid Vector + Graph retrieval
+- Graph-aware reranking
+- Internal wiki generation
+- Graph search, entity lookup, relationship lookup, graph explorer, knowledge_summary tools
 
 ---
 
@@ -768,7 +812,6 @@ Streaming Response
 - Collections
 - Tags
 - Metadata search
-- OCR
 
 ---
 
@@ -909,7 +952,206 @@ Investigate one stage at a time.
 
 ---
 
-# 11. Future Vision
+# 11. Future Pipeline: Web Search Integration
+
+A planned extension for Milestone 8. This pipeline does not exist yet.
+
+```
+Question
+
+↓
+
+Agent
+
+↓
+
+retrieve_context
+
+↓
+
+RetrievalResult
+
+↓
+
+Prompt Builder → LLM
+
+↓
+
+No answer? (Agent detects insufficient context)
+    │
+    ├────────────► web_search tool
+    │                   │
+    │                   ▼
+    │             Search Provider
+    │             (SerpAPI / Bing / Brave / etc.)
+    │                   │
+    │                   ▼
+    │             Web Search Results
+    │                   │
+    └───────────────────┘
+            │
+            ▼
+    Merged Context (Document + Web)
+            │
+            ▼
+    Prompt Builder → LLM → Answer with citations
+```
+
+Key design principles:
+
+- **Web search is an Agent Tool**, not part of the Retriever. This keeps retrieval dedicated to local knowledge.
+- **The Agent decides** when local context is insufficient and web search is needed.
+- **Document and web results** are merged before prompt construction for coherent synthesis.
+- **Web sources include attribution** (URL, title, snippet, timestamp).
+- **Configurable** via settings to enable/disable web search per request.
+
+---
+
+# 12. Future Pipeline: Multimodal Indexing
+
+A planned extension for Milestone 7. This pipeline does not exist yet.
+
+```
+PDF
+
+↓
+
+Multimodal Extraction
+├── Text extraction (existing)
+├── Image extraction (planned)
+├── OCR for scanned pages (planned)
+├── Table extraction (planned)
+├── Chart extraction (planned)
+└── Figure extraction (planned)
+
+↓
+
+Multimodal Processing
+├── Text → Text embeddings (existing provider)
+├── Images → Image embeddings (planned, via vision provider)
+├── Tables → Table representations (planned)
+├── Charts → Chart representations (planned)
+└── OCR text → Text embeddings (existing provider)
+
+↓
+
+Vector Store (single unified index)
+    │
+    ▼
+RetrievalResult (modality-agnostic)
+    │
+    ├────────► Prompt Builder (multimodal prompts)
+    │
+    ├────────► Citation Builder (visual + text citations)
+    │
+    └────────► Agent (visual reasoning)
+```
+
+Key design principles:
+
+- **Unified retrieval**: Regardless of modality (text, image, table, chart, OCR), the Retriever returns a single `RetrievalResult`.
+- **Modality-agnostic downstream**: Prompt Builder and Agent receive the same `RetrievalResult` structure. Only the Prompt Builder changes to construct multimodal prompts.
+- **Provider-agnostic vision**: Vision models are accessed through `providers/vision.py` abstraction.
+- **Modular extraction**: Each extraction type lives in its own module.
+- **Metadata preserves modality**: Each `RetrievedChunk` includes a `source_type` field (text, image, table, chart, ocr) so downstream components can handle it appropriately.
+
+---
+
+# 13. Future Pipeline: GraphRAG Integration
+
+A planned extension for Milestone 9. This pipeline does not exist yet.
+
+## GraphRAG Indexing Pipeline
+
+Runs after document indexing to build the knowledge graph.
+
+```
+Documents
+
+↓
+
+Entity Extraction
+├── Named entities (people, organizations, APIs, classes)
+├── Concepts and topics
+└── Document references
+
+↓
+
+Relationship Extraction
+├── Entity-to-entity relationships
+├── Document-to-entity links
+└── Cross-document connections
+
+↓
+
+Knowledge Graph
+
+↓
+
+Graph Database
+(node persistence, edge persistence, indexing)
+```
+
+## GraphRAG Execution Pipeline
+
+Graph retrieval augments — not replaces — the existing vector retrieval pipeline.
+
+```
+Question
+
+↓
+
+Agent
+
+↓
+
+retrieve_context (existing)
+
+↓
+
+Retriever (Strategy Dispatch)
+├── SimilarityStrategy
+├── MMRStrategy
+├── HybridStrategy (Dense + BM25)
+└── Cross-Encoder Reranker (if enabled)
+
+↓
+
+RetrievalResult (vector context)
+
+↓
+
+graph_search (new tool)
+├── Entity lookup in Knowledge Graph
+├── Relationship traversal
+├── Multi-hop path retrieval
+└── Neighbor expansion
+
+↓
+
+Graph Results (entities, relationships, paths)
+
+↓
+
+Hybrid Graph + Vector Retrieval
+(merge graph context into RetrievalResult)
+
+↓
+
+Prompt Builder → LLM → Response
+```
+
+Key design principles:
+
+- **GraphRAG augments vector retrieval**: Graph retrieval provides additional context alongside dense and lexical retrieval. It does not replace the existing pipeline.
+- **Unified RetrievalResult**: Graph-retrieved context is merged into the existing `RetrievalResult` abstraction rather than introducing a separate downstream data model.
+- **Prompt Builder remains unaware**: The Prompt Builder does not need to know whether retrieved context originated from vectors or graph traversal. It formats the unified `RetrievalResult` as before.
+- **Agent decides tool usage**: The Agent selects `graph_search` when relationship-based questions are detected (e.g., "what depends on X?", "who implements Y?").
+- **Composable**: Graph retrieval is composable with existing retrieval strategies and can be enabled or disabled per request.
+
+---
+
+# 14. Future Vision
 
 The pipeline should evolve into a general-purpose Agentic RAG engine.
 
@@ -917,10 +1159,8 @@ Future capabilities should be introduced by adding new tools rather than redesig
 
 Examples include
 
-- Web Search
-- Knowledge Graph lookup
+- Knowledge Graph lookup (planned, Milestone 9)
 - SQL querying
-- OCR
 - Document summarization
 - Multi-agent collaboration
 - Long-term memory

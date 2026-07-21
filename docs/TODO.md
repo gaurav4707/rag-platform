@@ -16,7 +16,7 @@ It should always remain synchronized with the codebase.
 
 **Current Phase**
 
-Milestone 6 — Advanced Agentic RAG ⏳
+Milestone 6 — Advanced Agentic RAG (In Progress)
 
 **Overall Progress**
 
@@ -35,7 +35,10 @@ Milestone 6 — Advanced Agentic RAG ⏳
 | 3. Retrieval Intelligence | ✅ Completed |
 | 4. Agent Foundations | ✅ Completed |
 | 5. User Experience | ✅ Completed |
-| 6. Advanced Agentic RAG | ⏳ Planned |
+| 6. Advanced Agentic RAG | ⏳ In Progress |
+| 7. Multimodal Intelligence | 📋 Planned |
+| 8. Web Search & External Knowledge | 📋 Planned |
+| 9. GraphRAG & Internal Knowledge Engine | 📋 Planned |
 
 ---
 
@@ -263,8 +266,13 @@ Polish the user experience with settings, conversation management, improved cita
 - [ ] Reflection
 - [ ] Planning
 - [ ] Multi-step reasoning
-- [ ] Tool routing
-- [ ] Multiple simultaneous tools
+- [ ] Reasoning traces
+- [ ] Agent observability (tracing, metrics)
+
+## Tools
+
+- [ ] summarize_document
+- [ ] search_by_metadata
 
 ## Infrastructure
 
@@ -272,9 +280,94 @@ Polish the user experience with settings, conversation management, improved cita
 - [ ] Multiple embedding providers
 - [ ] Multiple vector databases
 - [ ] Conversation memory (SQLite)
-- [ ] OCR
 - [ ] Background indexing
 - [ ] Monitoring
+
+---
+
+# Milestone 7 — Multimodal Intelligence
+
+## Retrieval
+
+- [ ] Image extraction from PDFs
+- [ ] OCR for scanned PDFs
+- [ ] Table understanding
+- [ ] Chart understanding
+- [ ] Figure understanding
+
+## Prompting
+
+- [ ] Multimodal prompt construction
+- [ ] Vision context formatting
+
+## Agent
+
+- [ ] Visual reasoning
+- [ ] Visual citations (image sources with page references)
+
+## Infrastructure
+
+- [ ] Vision provider abstraction
+- [ ] Unified multimodal retrieval
+
+---
+
+# Milestone 8 — Web Search & External Knowledge
+
+## Tools
+
+- [ ] web_search tool
+- [ ] Search provider abstraction (SerpAPI, Bing, Brave, etc.)
+
+## Agent
+
+- [ ] Intelligent fallback to web search
+- [ ] Confidence-aware tool selection
+- [ ] Configurable web search enable/disable
+
+## Responses
+
+- [ ] Document + Web answer synthesis
+- [ ] Source attribution for web results
+- [ ] Freshness-aware answers (timestamps for web-sourced content)
+
+---
+
+# Milestone 9 — GraphRAG & Internal Knowledge Engine
+
+## Graph Construction
+
+- [ ] Entity extraction
+- [ ] Relationship extraction
+- [ ] Graph builder
+- [ ] Incremental graph updates
+
+## Storage
+
+- [ ] Graph database abstraction
+- [ ] Node persistence
+- [ ] Edge persistence
+
+## Retrieval
+
+- [ ] Graph traversal
+- [ ] Hybrid retrieval
+- [ ] Entity search
+- [ ] Path search
+
+## Agent
+
+- [ ] graph_search tool
+- [ ] entity_lookup tool
+- [ ] relationship_lookup tool
+- [ ] graph_explorer tool
+
+## Internal Wiki
+
+- [ ] Wiki generation
+- [ ] Concept pages
+- [ ] Relationship visualization
+- [ ] Automatic summaries
 
 ---
 
@@ -282,11 +375,6 @@ Polish the user experience with settings, conversation management, improved cita
 
 Future ideas intentionally postponed.
 
-- [ ] Multi-modal RAG
-- [ ] Image extraction
-- [ ] Table extraction
-- [ ] Graph RAG
-- [ ] Web Search
 - [ ] Authentication
 - [ ] Multi-user support
 - [ ] Cloud deployment
@@ -299,12 +387,13 @@ Future ideas intentionally postponed.
 
 Current focus (highest priority first) — Milestone 6: Advanced Agentic RAG:
 
-1. **New tools** — summarize_document, search_by_metadata, web_search, calculator
-2. **Multiple LLM providers** — Support OpenAI, Anthropic alongside Groq
-3. **Multiple embedding providers** — Support OpenAI, Cohere alongside HuggingFace
-4. **Conversation memory** — Persistent chat history via SQLite
-5. **Agent improvements** — Reflection, planning, tool routing
-6. **Document improvements** — OCR, background indexing, multi-format support
+1. **New tools** — summarize_document, search_by_metadata
+2. **Agent improvements** — Reflection, planning, multi-step reasoning, reasoning traces
+3. **Retrieval improvements** — Parent document retrieval, context compression, adaptive chunking, multi-query retrieval
+4. **Multiple LLM providers** — Support OpenAI, Anthropic alongside Groq
+5. **Multiple embedding providers** — Support OpenAI, Cohere alongside HuggingFace
+6. **Conversation memory** — Persistent chat history via SQLite
+7. **Agent observability** — Tracing, metrics, monitoring
 
 ---
 

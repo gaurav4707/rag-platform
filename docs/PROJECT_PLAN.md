@@ -301,38 +301,157 @@ Completed
 
 Goal
 
-Expand the agent beyond document retrieval with new tools and infrastructure improvements.
+Improve the intelligence and autonomy of the Agent with advanced retrieval strategies, agent reasoning capabilities, and new tools.
 
 ### New Tools
 
 - summarize_document — LLM-based document summarization
 - search_by_metadata — Filter documents by metadata fields
-- web_search — External knowledge retrieval
-- calculator — Arithmetic tool
 
 ### Agent Improvements
 
 - Reflection — Agent reviews its own outputs for quality
 - Planning — Agent decomposes complex queries into sub-tasks
 - Multi-step reasoning — Chain multiple tool calls coherently
-- Tool routing — Intelligent tool selection heuristics
+- Reasoning traces — Visible chain-of-thought for debugging
+- Agent observability — Tracing, metrics, and monitoring for tool execution
 
 ### Retrieval
 
-- Multi-query retrieval — Generate multiple query variations
+- Multi-query retrieval — Generate multiple query variations for better recall
 - Parent Document Retrieval — Retrieve chunks, return full document context
-- Context Compression — Condense retrieved chunks
-- Adaptive chunking — Dynamic chunk sizes based on content
+- Context Compression — Condense retrieved chunks to fit more relevant information
+- Adaptive chunking — Dynamic chunk sizes based on content structure
 
 ### Infrastructure
 
 - Multiple embedding providers
 - Multiple LLM providers
-- OCR for scanned PDFs
 - Conversation memory with persistence
 - Background indexing
 - Monitoring and tracing (LangFuse / LangSmith)
-- Responsive/mobile layout improvements
+
+---
+
+## Milestone 7 — Multimodal Intelligence 📋
+
+Goal
+
+Enable the Agent to understand visual information inside documents.
+
+### Image Processing
+
+- Image extraction from PDFs
+- Figure understanding
+- Diagram understanding
+- Chart understanding
+- Table understanding
+- OCR for scanned PDFs
+
+### Prompting
+
+- Multimodal prompt construction
+- Vision context formatting
+
+### Agent
+
+- Visual reasoning over extracted images
+- Visual citations (image sources with page references)
+
+### Infrastructure
+
+- Vision-capable LLM provider abstraction
+- Unified multimodal retrieval (text + images share a single RetrievalResult)
+- Provider-agnostic vision integration
+
+---
+
+## Milestone 8 — Web Search & External Knowledge 📋
+
+Goal
+
+Allow the Agent to answer questions requiring information beyond uploaded documents.
+
+### Tools
+
+- web_search — External knowledge retrieval via search providers
+- Search provider abstraction (pluggable backend: SerpAPI, Bing, Brave, etc.)
+
+### Agent
+
+- Intelligent fallback to web search when local retrieval is insufficient
+- Confidence-aware tool selection
+- Configurable web search enable/disable
+
+### Responses
+
+- Document + Web answer synthesis
+- Source attribution for web results
+- Freshness-aware answers (timestamps for web-sourced content)
+
+---
+
+## Milestone 9 — GraphRAG & Internal Knowledge Engine 📋
+
+Goal
+
+Transform isolated document chunks into an interconnected knowledge graph capable of relationship-aware retrieval and reasoning.
+
+### Graph Construction
+
+- Entity extraction
+- Relationship extraction
+- Automatic graph generation
+- Cross-document linking
+- Incremental graph updates
+- Graph versioning
+
+### Knowledge Graph
+
+Support nodes representing:
+
+- Concepts
+- People
+- Organizations
+- APIs
+- Classes
+- Files
+- Components
+- Documents
+
+Support edges representing:
+
+- references
+- depends_on
+- implements
+- calls
+- extends
+- belongs_to
+- mentions
+
+### Retrieval
+
+- Graph traversal
+- Entity lookup
+- Relationship lookup
+- Multi-hop retrieval
+- Neighbor expansion
+- Hybrid Vector + Graph retrieval
+- Graph-aware reranking
+
+### Agent
+
+New planned tools:
+
+- graph_search
+- entity_lookup
+- relationship_lookup
+- graph_explorer
+- knowledge_summary
+
+### Internal Wiki
+
+The knowledge graph becomes an automatically generated internal wiki capable of answering relationship-based questions across the document corpus.
 
 ---
 

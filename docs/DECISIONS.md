@@ -451,13 +451,26 @@ Incremental development keeps the architecture stable, reduces debugging complex
    - Conversation management
 
 6. Advanced Agentic RAG
-   - Multiple tools
-   - Reflection
-   - Planning
-   - Multi-step reasoning
-   - Multiple LLM providers
-   - OCR
-   - Memory
+   - Reflection, planning, multi-step reasoning
+   - Advanced retrieval (parent document, context compression, multi-query)
+   - New tools (summarize_document, search_by_metadata)
+   - Multiple LLM and embedding providers
+   - Agent observability and reasoning traces
+   - Conversation memory
+
+7. Multimodal Intelligence
+   - Image extraction, OCR, table/chart/figure understanding
+   - Multimodal prompt construction
+   - Visual reasoning and citations
+   - Vision provider abstraction
+   - Unified multimodal retrieval
+
+8. Web Search & External Knowledge
+   - web_search tool with search provider abstraction
+   - Intelligent fallback between document and web search
+   - Document + Web answer synthesis
+   - Confidence-aware tool selection
+   - Configurable enable/disable
 
 ---
 
@@ -977,6 +990,10 @@ Potential future decisions include:
 - Caching strategy
 - Observability and tracing
 - Prompt injection defense
+- Knowledge graph schema design
+- Graph database selection (Neo4j, Memgraph, FalkorDB)
+- Entity and relationship extraction models
+- Graph traversal algorithms
 
 ---
 
@@ -2150,6 +2167,455 @@ Send `message + settings` to `/chat/stream`. Appropriate when settings affect re
 ### Revisit When
 
 Settings need to affect retrieval or LLM behavior (e.g., retrieval mode, top-K, temperature).
+
+---
+
+# ADR-031
+
+## Title
+
+Future Vision Provider Abstraction
+
+**Status**
+
+Proposed
+
+### Context
+
+Milestone 7 introduces multimodal capabilities including image extraction, OCR, table/chart understanding, and visual reasoning. These capabilities require vision-capable models (GPT-4V, Claude Vision, Gemini Vision, local multimodal models).
+
+Without a provider abstraction, vision model selection would be hardcoded into extraction and reasoning modules, creating vendor lock-in and violating the existing provider-agnostic architecture (ADR-007).
+
+### Decision
+
+Vision models must be accessed through provider abstractions exactly like LLM and embedding providers.
+
+The planned structure:
+
+```
+backend/providers/
+├── __init__.py
+├── embeddings.py      # existing
+├── llm.py             # existing
+├── exceptions.py      # existing
+├── vision.py          # planned
+└── search.py          # planned
+```
+
+The vision provider will follow the same patterns as ADR-020:
+
+1. **Factory function**: `get_vision_provider()` returns a configured vision-capable model
+2. **Registry pattern**: Dictionary mapping provider name → factory function
+3. **Lazy singleton**: `@functools.lru_cache(maxsize=1)` for efficiency
+4. **Configuration-driven**: Provider selection via `config.py` constant (`VISION_PROVIDER`)
+5. **Unified interface**: Supports multimodal inputs (text + image)
+
+### Alternatives Considered
+
+#### 1. Direct Vision Model Instantiation
+
+Simpler but violates provider-agnostic architecture. Hard to switch between vision providers.
+
+#### 2. Single Multimodal LLM Provider
+
+Merge vision into the existing LLM provider. Rejected because not all LLMs support vision, and the abstraction would need to handle both text-only and multimodal scenarios differently.
+
+#### 3. External Vision Service
+
+Separate microservice for vision processing. Over-engineered for current scope.
+
+### Consequences
+
+**Advantages:**
+
+- Consistent with existing provider architecture (ADR-007, ADR-020)
+- Easy to add new vision providers without changing extraction or reasoning modules
+- Provider selection centralized in config.py
+- Testable with mock vision providers
+
+**Trade-offs:**
+
+- Additional provider module
+- Vision providers must implement the same interface despite different capabilities
+- Some vision features (OCR, chart understanding) may need finer-grained abstraction
+
+### Revisit When
+
+- Vision models are added and the abstraction proves too coarse
+- A vision-specific registry pattern is needed (e.g., separate OCR vs. visual reasoning providers)
+
+---
+
+# ADR-032
+
+## Title
+
+Web Search as an Agent Tool
+
+**Status**
+
+Proposed
+
+### Context
+
+Milestone 8 introduces external knowledge retrieval via web search. The question is whether web search should be:
+
+- Part of the Retrieval pipeline (alongside similarity, MMR, hybrid)
+- An Agent Tool (alongside retrieve_context, list_documents)
+
+### Decision
+
+Web search is implemented as an **Agent Tool**, not inside the Retriever.
+
+### Reason
+
+- Keeps the Retriever dedicated to local knowledge (uploaded documents).
+- Allows the Agent to decide when external knowledge is necessary, maintaining the Agent's role as the orchestrator.
+- Supports future tools consistently — web search follows the same pattern as summarize_document, search_by_metadata, etc.
+- The Retriever remains a pure document retrieval pipeline without branching logic for external sources.
+
+### Alternatives Considered
+
+#### 1. Web Search as a Retrieval Strategy
+
+Add a `WebSearchStrategy` alongside Similarity, MMR, and Hybrid. Rejected because it would couple web search to the retrieval pipeline, making the Retriever responsible for external knowledge. This violates single responsibility.
+
+#### 2. Automatic Fallback Inside Retriever
+
+Retriever automatically falls back to web search when document retrieval returns no results. Rejected because it removes the Agent's decision-making capability and couples web search logic to retrieval orchestration.
+
+#### 3. Separate Retrieval Pipeline for Web
+
+A parallel retrieval pipeline for web results merged with document results. Over-engineered — an Agent tool is simpler and follows existing patterns.
+
+### Consequences
+
+**Advantages:**
+
+- Consistent with tool-oriented architecture (ADR-014)
+- Retriever remains focused on local document retrieval only
+- Agent controls when to use web search
+- Web search can be enabled/disabled per request via tool selection
+- Same streaming, citation, and error handling as other tools
+
+**Trade-offs:**
+
+- The Agent must explicitly decide to call web_search (not automatic)
+- Web results merged with document results at the prompt level, not the retrieval level
+- May need heuristics for when to trigger web search (confidence scoring)
+
+### Revisit When
+
+- Web search becomes a primary retrieval path rather than a fallback
+- Automatic web search triggering (without Agent invocation) is needed for specific query types
+
+---
+
+# ADR-033
+
+## Title
+
+Unified Multimodal Retrieval
+
+**Status**
+
+Proposed
+
+### Context
+
+Milestone 7 introduces multimodal document understanding — images, tables, charts, and OCR text extracted from PDFs. Each modality has different characteristics:
+
+- Text is embedded via text embeddings
+- Images may need separate vision embeddings
+- Tables may need hybrid representations
+- OCR text is plain text extracted from images
+
+The question is whether each modality should have its own retrieval pathway or share a unified abstraction.
+
+### Decision
+
+Regardless of whether context originates from text, images, tables, or OCR, the Retriever exposes a single `RetrievalResult` abstraction.
+
+All modalities share the same Vector Store. The `RetrievedChunk` metadata includes a `source_type` field to distinguish modalities.
+
+### Reason
+
+- Downstream Prompt Builder and Agent should remain modality-agnostic.
+- The single-retrieval-per-request invariant (ADR-00X) should hold regardless of modality.
+- Modality-specific handling belongs in the Prompt Builder (formatting), not the retrieval layer.
+
+### Alternatives Considered
+
+#### 1. Separate Retrieval Pipelines per Modality
+
+Each modality has its own retriever and vector index. Rejected because it significantly increases complexity, violates the single-retrieval invariant, and forces downstream components to merge results.
+
+#### 2. Modality-Aware RetrievalResult
+
+Add modality-specific fields to RetrievalResult (e.g., extracted_images, tables). Rejected because it couples downstream components to specific modalities and breaks the clean abstraction.
+
+#### 3. Prompt-Time Modality Handling
+
+Retrieval remains completely modality-agnostic. The Prompt Builder handles formatting differences. This is the chosen approach.
+
+### Consequences
+
+**Advantages:**
+
+- Prompt Builder and Agent remain unchanged for text-only vs. multimodal scenarios
+- Single RetrievalResult flows through the existing architecture
+- Modality metadata in each chunk enables flexible downstream handling
+- New modalities can be added without changing the retrieval abstraction
+
+**Trade-offs:**
+
+- Prompt Builder must handle different modalities in formatting
+- Unified embeddings across modalities may lose modality-specific signals
+- May need modality-specific retrieval strategies for optimal quality
+
+### Revisit When
+
+- Modality-specific retrieval strategies (e.g., separate image/table indexes) measurably improve quality
+- Downstream components need modality-specific processing before prompt construction
+
+---
+
+# ADR-034
+
+## Title
+
+Knowledge Graph Abstraction
+
+**Status**
+
+Proposed
+
+### Context
+
+Milestone 9 introduces GraphRAG, which constructs a knowledge graph from the document corpus. The knowledge graph represents entities (concepts, people, organizations, APIs, classes, files, components, documents) and their relationships (references, depends_on, implements, calls, extends, belongs_to, mentions).
+
+Without a provider-independent graph abstraction, business logic would be coupled to a specific graph database, violating the provider-agnostic architecture (ADR-007).
+
+### Decision
+
+Represent document knowledge through a provider-independent graph abstraction rather than coupling business logic to a specific graph database.
+
+Graph operations are accessed through `providers/graph.py` following the same factory + registry pattern as LLM and embedding providers.
+
+### Reason
+
+Maintain provider independence. The graph database can be swapped without changing RAG modules, retrieval strategies, or agent tools.
+
+### Alternatives Considered
+
+#### 1. Direct Graph Database Integration
+
+Embed Neo4j/Memgraph/FalkorDB client directly in retrieval modules. Rejected because it violates ADR-007 and creates vendor lock-in.
+
+#### 2. In-Memory Graph Only
+
+Use networkx or similar for in-memory graph only. Rejected because it doesn't scale and can't be persisted across restarts.
+
+### Consequences
+
+**Advantages:**
+
+- Consistent with existing provider architecture (ADR-007, ADR-020)
+- Easy to add new graph providers without changing business logic
+- Provider selection centralized in config.py
+- Testable with mock graph providers
+
+**Trade-offs:**
+
+- Additional provider module
+- Graph databases have different query languages and capabilities
+- Abstraction may not expose database-specific optimizations
+
+### Revisit When
+
+- A second graph database provider is introduced
+- Graph-specific query optimizations are needed that the abstraction cannot express
+
+---
+
+# ADR-035
+
+## Title
+
+Graph Retrieval Complements Vector Retrieval
+
+**Status**
+
+Proposed
+
+### Context
+
+Milestone 9 introduces GraphRAG for relationship-aware retrieval. The question is whether graph retrieval should replace vector retrieval or complement it.
+
+Vector retrieval excels at semantic similarity search. Graph retrieval excels at relationship traversal and multi-hop reasoning. Neither alone covers all retrieval scenarios.
+
+### Decision
+
+Graph retrieval is an additional retrieval strategy. It does not replace similarity retrieval, hybrid retrieval, or reranking.
+
+Graph retrieval should be composable with existing retrieval strategies.
+
+### Reason
+
+Different retrieval approaches serve different query types:
+
+- Semantic queries → vector retrieval
+- Exact keyword queries → BM25/hybrid retrieval
+- Relationship queries ("what depends on X?", "who calls Y?") → graph retrieval
+- Complex queries may benefit from combining multiple strategies
+
+### Alternatives Considered
+
+#### 1. Replace Vector Retrieval with Graph Retrieval
+
+Graph-only retrieval loses semantic similarity capabilities. Rejected because vector retrieval handles semantic queries better than graph traversal.
+
+#### 2. Separate Graph and Vector Pipelines
+
+Run graph and vector retrieval independently with separate downstream components. Rejected because it complicates the architecture and creates duplicate prompt construction and citation paths.
+
+### Consequences
+
+**Advantages:**
+
+- Each retrieval strategy handles what it does best
+- Composable — strategies can be combined
+- Existing vector retrieval pipeline remains unchanged
+- New graph-specific tools can be added without modifying existing tools
+
+**Trade-offs:**
+
+- More retrieval strategies to manage
+- Graph retrieval adds complexity to the retrieval layer
+- May need strategy selection heuristics for optimal query routing
+
+### Revisit When
+
+- Evaluation shows graph retrieval alone outperforms vector retrieval for specific domains
+- A unified retrieval abstraction that subsumes all strategies is needed
+
+---
+
+# ADR-036
+
+## Title
+
+Internal Wiki Generation from Knowledge Graph
+
+**Status**
+
+Proposed
+
+### Context
+
+Milestone 9 builds a knowledge graph from the document corpus. The knowledge graph captures entities and their relationships across documents.
+
+Beyond retrieval, the knowledge graph can serve as the source for automatically generated documentation — concept pages, relationship maps, and summaries that help users explore the corpus.
+
+### Decision
+
+The knowledge graph becomes the source for automatically generated internal wiki pages and concept summaries.
+
+### Reason
+
+Allow users to explore relationships across the corpus instead of searching only by keywords. The wiki provides a browsable, structured view of the document corpus that complements keyword-based retrieval.
+
+### Alternatives Considered
+
+#### 1. Wiki as Separate System
+
+Build a standalone wiki system independent of the knowledge graph. Rejected because it duplicates data and creates synchronization overhead.
+
+#### 2. Static Documentation Only
+
+Generate static pages at indexing time. Rejected because the knowledge graph evolves incrementally and wiki pages should reflect the current state.
+
+### Consequences
+
+**Advantages:**
+
+- Wiki stays in sync with the knowledge graph automatically
+- Users can browse relationships without formulating queries
+- Concept pages provide overviews that are hard to discover through search alone
+- Internal wiki tool can be invoked by the Agent when users ask exploratory questions
+
+**Trade-offs:**
+
+- Wiki quality depends on extraction quality
+- Large corpora may produce overwhelming wiki output
+- Wiki generation adds processing time during indexing
+
+### Revisit When
+
+- Extraction quality is insufficient for useful wiki content
+- Users need persistent, versioned wiki pages rather than on-demand generation
+- Wiki output needs to be stored and served as static content
+
+---
+
+# ADR-037
+
+## Title
+
+Unified RetrievalResult Across All Retrieval Strategies
+
+**Status**
+
+Proposed
+
+### Context
+
+Milestone 9 adds graph retrieval alongside vector retrieval. Milestone 8 adds web search. Multiple retrieval strategies now produce results that need to flow through the same downstream pipeline (Prompt Builder, Citation Builder, Agent).
+
+Without a unified abstraction, each retrieval strategy would require its own downstream handling, multiplying complexity.
+
+### Decision
+
+Regardless of whether retrieved context originates from:
+
+- Vector Search
+- Graph Search
+- Future Web Search
+
+all retrieval outputs should continue using the existing `RetrievalResult` abstraction.
+
+### Reason
+
+Keep Prompt Builder, Agent, and downstream components provider- and retrieval-strategy agnostic. The `RetrievalResult` is the single source of truth for the remainder of a request lifecycle.
+
+### Alternatives Considered
+
+#### 1. Strategy-Specific Result Types
+
+Each retrieval strategy returns its own result type. Rejected because it multiplies downstream handling and violates the single-retrieval invariant.
+
+#### 2. Merged Result at Retrieval Layer
+
+Merge all retrieval results into a single result inside the Retriever. This is the chosen approach — but the merged result must use the same `RetrievalResult` structure.
+
+### Consequences
+
+**Advantages:**
+
+- Prompt Builder, Citation Builder, and Agent remain unchanged
+- New retrieval strategies can be added without modifying downstream components
+- Single retrieval invariant preserved across all strategy types
+- Debugging is consistent — same result structure regardless of strategy
+
+**Trade-offs:**
+
+- `RetrievalResult` may need to carry metadata indicating which strategies contributed
+- Graph-specific metadata (entities, relationships, paths) must be expressible within the existing chunk/metadata model
+
+### Revisit When
+
+- Retrieval strategies produce fundamentally different output structures that cannot be unified
+- Downstream components need strategy-specific processing before prompt construction
 
 ---
 

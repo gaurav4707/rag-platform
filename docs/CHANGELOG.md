@@ -141,3 +141,44 @@ Delivered: Prior
 - Document management (list, delete)
 - Standardized error format and handlers
 - Backend documentation
+
+---
+
+# Upcoming
+
+## Milestone 6 — Advanced Agentic RAG
+
+Planned capabilities focusing on Agent intelligence and autonomy:
+
+- **New tools**: summarize_document, search_by_metadata
+- **Agent improvements**: Reflection, planning, multi-step reasoning, reasoning traces
+- **Retrieval**: Multi-query retrieval, parent document retrieval, context compression, adaptive chunking
+- **Infrastructure**: Multiple LLM/embedding providers, conversation memory, agent observability
+
+## Milestone 7 — Multimodal Intelligence
+
+Planned capabilities for visual document understanding:
+
+- Image extraction, OCR, table/chart/figure understanding
+- Multimodal prompt construction with vision context
+- Visual reasoning and citations
+- Vision provider abstraction and unified multimodal retrieval
+
+## Milestone 8 — Web Search & External Knowledge
+
+Planned capabilities for external knowledge integration:
+
+- web_search tool with search provider abstraction
+- Intelligent fallback from local retrieval to web search
+- Document + Web answer synthesis with source attribution
+- Confidence-aware tool selection and freshness-aware answers
+
+## Milestone 9 — GraphRAG & Internal Knowledge Engine
+
+Planned capabilities for relationship-aware knowledge retrieval:
+
+- Knowledge graph generation from document corpus
+- Hybrid vector + graph retrieval
+- Internal wiki generation
+- Graph-based reasoning across documents
+- Relationship-aware retrieval via entity and relationship lookup

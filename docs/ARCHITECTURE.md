@@ -58,25 +58,41 @@ Every future feature should follow this architecture unless an explicit architec
                     |
               Tool Registry
                     |
-       +------------+------------+------------------+
-       |            |            |                  |
-  retrieve_    list_        search_by_           Future
-  context     documents    filename              Tools
-       |            |            |
-       |    Document Service   Document Service
-       |         |                  |
-       v         v                  v
-   Retriever (Strategy Dispatch)
-       |
-   +---+---+---+---+---+---+
-   |   |   |   |   |   |   |
-   ▼   ▼   ▼   ▼   ▼   ▼   ▼
- Similarity MMR Hybrid Query Rewrite Rerank Future
-       |
-   Query Rewriter (if enabled)
-       |
-   Vector Store (ChromaDB)
-       |
+        +------------+------------+------------------+------------------+------------------+
+        |            |            |                  |                  |                  |
+   retrieve_    list_        search_by_        summarize_        search_by_
+   context     documents    filename           document           metadata
+        |            |            |                  |                  |
+        |    Document Service   Document Service    LLM             Vector Store
+        |         |                  |              (future)         (future)
+        v         v                  v
+    Retriever (Strategy Dispatch)
+        |
+    +---+---+---+---+---+---+
+    |   |   |   |   |   |   |
+    ▼   ▼   ▼   ▼   ▼   ▼   ▼
+  Similarity MMR Hybrid Query Rewrite Rerank Future
+        |
+    Query Rewriter (if enabled)
+        |
+    Vector Store (ChromaDB)
+        |
+        RetrievalResult
+        │
+        ├────────────► Prompt Builder
+        │
+        ├────────────► Citation Builder
+        │
+        └────────────► ToolExecutor (iterative loop)
+        |
+    Embeddings
+        |
+    Splitter
+        |
+    Loader
+        |
+    Storage (PDFs)
+---
        RetrievalResult
        │
        ├────────────► Prompt Builder
@@ -146,7 +162,9 @@ project/
 │   ├── __init__.py
 │   ├── embeddings.py
 │   ├── llm.py
-│   └── exceptions.py
+│   ├── exceptions.py
+│   ├── vision.py       (planned — multimodal providers)
+│   └── search.py       (planned — web search providers)
 │
 ├── evaluation/
 │   ├── __init__.py
@@ -417,6 +435,23 @@ Current tools:
 - **list_documents** — Lists all indexed documents (delegates to Document Service)
 - **search_by_filename** — Searches documents by filename pattern (delegates to Document Service)
 
+Future tools (Milestone 6):
+
+- **summarize_document** — LLM-based document summarization
+- **search_by_metadata** — Filter documents by metadata fields
+
+Future tools (Milestone 8):
+
+- **web_search** — External knowledge retrieval via search providers
+
+Future tools (Milestone 9):
+
+- **graph_search** — Relationship-aware search via knowledge graph
+- **entity_lookup** — Find entities (concepts, people, APIs) by name
+- **relationship_lookup** — Find relationships between entities
+- **graph_explorer** — Explore neighborhood of a given entity
+- **knowledge_summary** — Summarize entities and their relationships
+
 The architecture is intentionally designed so additional tools can be added without changing the API layer.
 
 ---
@@ -540,6 +575,50 @@ LLM provider factory:
 ## providers/exceptions.py
 
 - `ProviderConfigurationError` — raised for invalid provider configuration
+
+---
+
+## providers/vision.py (Planned)
+
+Planned vision provider abstraction for multimodal support:
+
+- `get_vision_provider()` — factory function returning a vision-capable model
+- Registry pattern identical to LLM and embedding providers
+- Supports multimodal inputs (text + images)
+
+This provider does not exist yet. It is a planned extension for Milestone 7.
+
+---
+
+## providers/search.py (Planned)
+
+Planned search provider abstraction for web search:
+
+- `get_search_provider()` — factory function returning a web search client
+- Registry pattern for multiple backends (SerpAPI, Bing, Brave, etc.)
+- Configurable through `config.py`
+
+This provider does not exist yet. It is a planned extension for Milestone 8.
+
+---
+
+## providers/graph.py (Planned)
+
+Planned graph database provider abstraction for GraphRAG:
+
+- `get_graph_provider()` — factory function returning a graph database client
+- Registry pattern for multiple backends (Neo4j, Memgraph, FalkorDB, etc.)
+- Configurable through `config.py`
+
+This provider does not exist yet. It is a planned extension for Milestone 9.
+
+Possible future graph database providers:
+
+- Neo4j
+- Memgraph
+- FalkorDB
+
+No implementation commitment is made to any specific provider.
 
 ---
 
@@ -746,12 +825,26 @@ Current:
 - `list_documents` — List indexed documents (delegates to `document_service.py`)
 - `search_by_filename` — Search documents by filename (delegates to `document_service.py`)
 
-Future:
+Future (Milestone 6):
 
-- summarize_document
-- search_by_metadata
-- web_search
-- calculator
+- `summarize_document` — LLM-based document summarization
+- `search_by_metadata` — Filter documents by metadata fields
+
+Future (Milestone 8):
+
+- `web_search` — External knowledge retrieval via search providers
+
+Future (Milestone 9):
+
+- `graph_search` — Relationship-aware search via knowledge graph
+- `entity_lookup` — Find entities by name
+- `relationship_lookup` — Find relationships between entities
+- `graph_explorer` — Explore neighborhood of a given entity
+- `knowledge_summary` — Summarize entities and their relationships
+
+Planned:
+
+- `calculator` — Arithmetic tool
 
 Tool implementations remain thin and delegate business logic to the appropriate modules.
 
@@ -938,30 +1031,163 @@ The architecture should allow adding:
 ## Retrieval
 
 - Hybrid Search (implemented)
-- Query Rewriting
-- Reranking
+- Query Rewriting (implemented)
+- Reranking (implemented)
+- Multi-query Retrieval (planned)
+- Parent Document Retrieval (planned)
+- Context Compression (planned)
+- Adaptive Chunking (planned)
 
 ## Agent
 
-- Reflection
-- Planning
-- Multi-step reasoning
-- Tool routing
-- Multiple simultaneous tools
+- Reflection (planned)
+- Planning (planned)
+- Multi-step reasoning (planned)
+- Reasoning traces (planned)
+- Tool routing (planned)
+- Agent observability (planned)
+
+## Tools
+
+- summarize_document (planned)
+- search_by_metadata (planned)
+- web_search (planned)
+
+## Multimodal (Milestone 7)
+
+- Image extraction from PDFs
+- OCR
+- Table/chart/figure understanding
+- Vision provider abstraction
+- Unified multimodal retrieval
+
+## Web Search (Milestone 8)
+
+- Search provider abstraction
+- Document + Web answer synthesis
+- Confidence-aware tool selection
+
+## GraphRAG (Milestone 9)
+
+- Knowledge graph construction (entity and relationship extraction)
+- Graph database abstraction (provider-agnostic)
+- Graph traversal and multi-hop retrieval
+- Hybrid Vector + Graph retrieval
+- Graph-aware reranking
+- Internal wiki generation
+- Graph search, entity lookup, relationship lookup, graph explorer, knowledge_summary tools
+
+GraphRAG complements — not replaces — the existing vector retrieval pipeline. Graph retrieval should operate alongside dense retrieval rather than replacing it.
 
 ## Infrastructure
 
 - New LLM providers
 - New embedding models
+- New vision models
+- New search providers
 - New vector databases
-- OCR
+- New graph databases (Neo4j, Memgraph, FalkorDB)
 - Conversation memory
 
 without changing unrelated modules.
 
 ---
 
-# 11. Offline Evaluation
+# 10. Future Multimodal Indexing Flow
+
+A planned extension for Milestone 7. This flow does not exist yet.
+
+```
+PDF
+
+↓
+
+Multimodal Extraction
+├── Text extraction (existing loader.py)
+├── Image extraction (planned)
+├── OCR for scanned pages (planned)
+├── Table extraction (planned)
+└── Chart/figure extraction (planned)
+
+↓
+
+Multimodal Processing
+├── Text → Text embeddings (existing)
+├── Images → Image embeddings (planned, via vision provider)
+├── Tables → Table representations (planned)
+│   └── Charts → Chart representations (planned)
+
+↓
+
+Vector Store (single unified index)
+
+↓
+
+RetrievalResult (modality-agnostic)
+```
+
+Key design principles:
+
+- **Modality-agnostic retrieval**: Regardless of whether context originates from text, images, tables, or OCR, the Retriever returns a single `RetrievalResult` abstraction.
+- **Modular extraction**: Each extraction type (image, table, chart, OCR) is isolated in its own module.
+- **Provider-agnostic vision**: Vision models are accessed through the providers/vision.py abstraction, exactly like LLMs and embeddings.
+- **Unified indexing**: All modalities share the same Vector Store for simplicity. The `RetrievalResult` preserves the source modality through metadata.
+
+---
+
+---
+
+# 11. Future GraphRAG Architecture
+
+A planned extension for Milestone 9. This flow does not exist yet.
+
+```
+Documents
+
+↓
+
+Entity Extraction
+
+↓
+
+Relationship Extraction
+
+↓
+
+Knowledge Graph
+
+↓
+
+Graph Database
+
+↓
+
+Graph Retriever
+
+↓
+
+Hybrid Retriever (Vector + Graph)
+
+↓
+
+Agent
+
+↓
+
+Response
+```
+
+Key design principles:
+
+- **GraphRAG complements vector retrieval**: Graph retrieval is an additional retrieval strategy alongside similarity, hybrid, and reranking. It does not replace the existing vector retrieval pipeline.
+- **Unified RetrievalResult**: Regardless of whether retrieved context originates from vector search, graph search, or future web search, all retrieval outputs continue using the existing `RetrievalResult` abstraction.
+- **Provider-agnostic graph database**: Graph operations are accessed through `providers/graph.py` abstraction, exactly like LLMs, embeddings, and search providers.
+- **Prompt Builder remains unaware**: The Prompt Builder does not need to know whether retrieved context originated from vectors or graph traversal.
+- **Composable strategies**: Graph retrieval should be composable with existing retrieval strategies (similarity, hybrid, reranking).
+
+---
+
+# 12. Offline Evaluation
 
 The `backend/evaluation/` module provides an **offline development tool** for measuring retrieval quality.
 
@@ -1033,7 +1259,7 @@ Saved to `backend/evaluation/reports/evaluation_<timestamp>.json`:
 
 ---
 
-# 10. Architecture Constraints
+# 13. Architecture Constraints
 
 The following rules should not be violated without recording an architectural decision:
 
