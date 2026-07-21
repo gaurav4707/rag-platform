@@ -2,12 +2,6 @@ import { ToastContextType } from "../components/Common/ToastProvider";
 import { mapApiError } from "./errorMapper";
 import { ApiError } from "./api";
 
-/**
- * Notification helper functions.
- * Each function accepts the toast context as a parameter.
- * This avoids global state and makes testing easier.
- */
-
 export function notifyUploadSuccess(toast: ToastContextType, filename: string) {
   toast.success("Document Indexed", `${filename} is ready to chat.`);
 }
@@ -42,35 +36,6 @@ export function notifyDeleteFailed(
   toast.error(mapped.title, mapped.description, onRetry ? { label: "Retry", onClick: onRetry } : undefined);
 }
 
-export function notifyChatInterrupted(
-  toast: ToastContextType,
-  onRetry: () => void
-) {
-  toast.warning("Connection Lost", "The response stream was interrupted.", { label: "Retry", onClick: onRetry });
-}
-
-export function notifyServerUnavailable(
-  toast: ToastContextType,
-  onRetry?: () => void
-) {
-  toast.error(
-    "Server Unavailable",
-    "The server is temporarily unavailable. Please try again in a moment.",
-    onRetry ? { label: "Retry", onClick: onRetry } : undefined
-  );
-}
-
-export function notifyNetworkError(
-  toast: ToastContextType,
-  onRetry?: () => void
-) {
-  toast.error(
-    "Connection Error",
-    "Unable to connect to the server. Please check your connection.",
-    onRetry ? { label: "Retry", onClick: onRetry } : undefined
-  );
-}
-
-export function notifyDocumentNotFound(toast: ToastContextType) {
-  toast.error("Document Not Found", "The document may have been deleted.");
+export function notifyChatInterrupted(toast: ToastContextType) {
+  toast.warning("Connection Lost", "Response interrupted. Check your connection.");
 }

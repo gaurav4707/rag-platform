@@ -6,7 +6,7 @@ import { useToast } from "../components/Common";
 import {
   notifyChatInterrupted,
 } from "../services/notifications";
-import type { Message as MessageType, Source } from "../types";
+import type { Message as MessageType, Source, MessageState } from "../types";
 
 let nextId = 1;
 
@@ -47,7 +47,7 @@ export function HomePage() {
       setMessages((prev) => [
         ...prev,
         userMsg,
-        { id: assistantId, role: "assistant", content: "", isStreaming: true },
+        { id: assistantId, role: "assistant", content: "", state: "pending" as MessageState },
       ]);
 
       setStreaming(true);
@@ -57,6 +57,7 @@ export function HomePage() {
         onToken: (token) => {
           appendToLastMessage(assistantId, (last) => ({
             ...last,
+            state: "streaming" as MessageState,
             content: last.content + token,
           }));
         },
@@ -66,7 +67,7 @@ export function HomePage() {
             const updated = prev.slice();
             const last = updated[updated.length - 1];
             if (last && last.id === assistantId) {
-              updated[updated.length - 1] = { ...last, sources, isStreaming: false };
+              updated[updated.length - 1] = { ...last, sources, state: "complete" as MessageState };
             }
             return updated;
           });
@@ -82,15 +83,13 @@ export function HomePage() {
             return;
           }
 
-          // Preserve partial response, add inline warning
           setMessages((prev) => {
             const updated = prev.slice();
             const last = updated[updated.length - 1];
             if (last && last.id === assistantId) {
               updated[updated.length - 1] = { 
                 ...last, 
-                isStreaming: false,
-                streamInterrupted: true,
+                state: "interrupted" as MessageState,
               };
             }
             return updated;
@@ -100,12 +99,7 @@ export function HomePage() {
           assistantIdRef.current = null;
           abortControllerRef.current = null;
           
-          // Show toast notification for stream interruption
-          notifyChatInterrupted(toast, () => {
-            if (lastUserMessageRef.current) {
-              handleSend(lastUserMessageRef.current);
-            }
-          });
+          notifyChatInterrupted(toast);
         },
       }, abortControllerRef.current.signal);
     },

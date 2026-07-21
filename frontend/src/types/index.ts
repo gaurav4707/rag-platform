@@ -32,17 +32,25 @@ export interface DeleteResponse {
   status: string;
 }
 
+export type MessageState = "pending" | "streaming" | "complete" | "interrupted" | "error";
+
 export interface Message {
   id: string;
   role: "user" | "assistant";
   content: string;
+  state?: MessageState;
   sources?: Source[];
-  isStreaming?: boolean;
-  streamInterrupted?: boolean;
 }
 
 export interface StreamCallbacks {
   onToken: (token: string) => void;
   onDone: (sources: Source[], toolCalls: Record<string, unknown>[]) => void;
   onError: (error: Error) => void;
+}
+
+export type UploadStatus = "idle" | "uploading" | "processing" | "success" | "error";
+
+export interface UploadLifecycle {
+  onProgress?: (progress: number) => void;
+  onProcessing?: () => void;
 }

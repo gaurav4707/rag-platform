@@ -10,13 +10,14 @@ interface ChatWindowProps {
 
 export function ChatWindow({ messages, onRetry }: ChatWindowProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
+  const streaming = messages.some(m => m.state === "streaming" || m.state === "pending");
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
   return (
-    <div className="flex-1 overflow-y-auto scrollbar-thin">
+    <div className="flex-1 overflow-y-auto scrollbar-thin" aria-busy={streaming} role="region" aria-label="Chat messages">
       {messages.length === 0 ? (
         <div className="flex h-full items-center justify-center px-6">
           <div className="max-w-md">
@@ -45,16 +46,15 @@ export function ChatWindow({ messages, onRetry }: ChatWindowProps) {
           </div>
         </div>
       ) : (
-        <div className="mx-auto w-full max-w-3xl space-y-5 px-4 py-6 lg:px-6 lg:py-8">
+        <div className="mx-auto w-full max-w-3xl space-y-5 px-4 py-6 lg:px-6 lg:py-8" aria-live="polite" aria-atomic="false">
           {messages.map((msg) => (
             <Message
               key={msg.id}
               role={msg.role}
               content={msg.content}
+              state={msg.state}
               sources={msg.sources}
-              isStreaming={msg.isStreaming}
-              streamInterrupted={msg.streamInterrupted}
-              onRetry={msg.streamInterrupted ? onRetry : undefined}
+              onRetry={msg.state === "interrupted" ? onRetry : undefined}
             />
           ))}
           <div ref={bottomRef} />

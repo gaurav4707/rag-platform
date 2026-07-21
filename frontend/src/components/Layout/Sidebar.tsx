@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { getDocuments, uploadDocument, deleteDocument } from "../../services/documentApi";
-import type { Document } from "../../types";
+import type { Document, UploadLifecycle } from "../../types";
 import { UploadCard } from "../Upload/UploadCard";
 import { DocumentList } from "../Documents/DocumentList";
 import { useToast } from "../../hooks/useToast";
@@ -34,20 +34,23 @@ export function Sidebar() {
     }
   }
 
-  async function handleUpload(file: File): Promise<void> {
+  const handleRetryLoad = useCallback(() => {
+    loadDocuments();
+  }, []);
+
+  async function handleUpload(file: File, lifecycle: UploadLifecycle): Promise<void> {
     try {
-      const response = await uploadDocument(file);
+      const response = await uploadDocument(file, lifecycle.onProgress);
+      lifecycle.onProcessing?.();
       const docs = await loadDocuments();
-      
-      // Verify the document is actually in the list before showing success
+
       const docExists = docs.some((d) => d.document_id === response.document_id);
-      
+
       if (response.already_indexed) {
         notifyDuplicateUpload(toast, file.name);
       } else if (docExists) {
         notifyUploadSuccess(toast, file.name);
       } else {
-        // Document not found in list after upload - this shouldn't happen
         console.warn("Uploaded document not found in document list after refresh");
         notifyUploadSuccess(toast, file.name);
       }
@@ -106,6 +109,7 @@ export function Sidebar() {
           error={documentsError}
           deletingDocumentId={deletingDocumentId}
           onDelete={handleDelete}
+          onRetry={handleRetryLoad}
         />
       </div>
     </aside>

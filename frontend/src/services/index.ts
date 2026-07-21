@@ -8,8 +8,5 @@ export {
   notifyDeleteSuccess,
   notifyDeleteFailed,
   notifyChatInterrupted,
-  notifyServerUnavailable,
-  notifyNetworkError,
-  notifyDocumentNotFound,
 } from "./notifications";
 export { mapApiError, getErrorTitle, getErrorDescription } from "./errorMapper";

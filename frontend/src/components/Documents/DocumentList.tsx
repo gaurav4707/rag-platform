@@ -1,9 +1,10 @@
 import { useState } from "react";
 import type { Document } from "../../types";
-import { Spinner } from "../Common/Spinner";
+import { Button } from "../ui";
 import { ConfirmationDialog } from "../Common";
 import { SectionTitle } from "../ui/SectionTitle";
 import { EmptyState } from "../ui/EmptyState";
+import { ErrorState } from "../ui/ErrorState";
 
 interface DocumentListProps {
   documents: Document[];
@@ -11,6 +12,7 @@ interface DocumentListProps {
   error: string | null;
   deletingDocumentId: string | null;
   onDelete: (documentId: string, filename: string) => void;
+  onRetry: () => void;
 }
 
 export function DocumentList({
@@ -19,6 +21,7 @@ export function DocumentList({
   error,
   deletingDocumentId,
   onDelete,
+  onRetry,
 }: DocumentListProps) {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [docToDelete, setDocToDelete] = useState<Document | null>(null);
@@ -41,10 +44,10 @@ export function DocumentList({
   }
 
   return (
-    <div data-testid="document-list">
+    <div data-testid="document-list" aria-busy={loading}>
       <SectionTitle
         title="Library"
-        count={!loading && documents.length > 0 ? documents.length : undefined}
+        count={!loading && error === null && documents.length > 0 ? documents.length : undefined}
       />
 
       {loading && (
@@ -59,6 +62,14 @@ export function DocumentList({
             </div>
           ))}
         </div>
+      )}
+
+      {!loading && error && (
+        <ErrorState
+          title="Failed to load documents"
+          message="Could not retrieve your document library. Please try again."
+          onRetry={onRetry}
+        />
       )}
 
       {!loading && !error && documents.length === 0 && (
@@ -85,7 +96,7 @@ export function DocumentList({
         </div>
       )}
 
-      {!loading && documents.length > 0 && (
+      {!loading && error === null && documents.length > 0 && (
         <ul className="space-y-1.5" data-testid="document-items">
           {documents.map((doc) => {
             const isDeleting = deletingDocumentId === doc.document_id;
@@ -119,32 +130,29 @@ export function DocumentList({
                   {doc.filename}
                 </span>
 
-                <button
-                  type="button"
+                <Button
+                  variant="danger"
                   onClick={() => handleDeleteClick(doc)}
                   disabled={isDeleting}
-                  className="flex-shrink-0 rounded-md p-1 text-surface-300 transition-colors hover:bg-red-50 hover:text-red-600 focus:outline-none focus:ring-2 focus:ring-red-400 focus:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-50 group-hover:text-surface-400"
+                  isLoading={isDeleting}
+                  className="!h-auto !w-auto !rounded-md !p-1 bg-transparent text-surface-300 hover:bg-red-50 hover:text-red-600 group-hover:text-surface-400"
                   aria-label={`Delete ${doc.filename}`}
                 >
-                  {isDeleting ? (
-                    <Spinner size="sm" />
-                  ) : (
-                    <svg
-                      className="h-3.5 w-3.5"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                      strokeWidth={2}
-                      aria-hidden="true"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0"
-                      />
-                    </svg>
-                  )}
-                </button>
+                  <svg
+                    className="h-3.5 w-3.5"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    strokeWidth={2}
+                    aria-hidden="true"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0"
+                    />
+                  </svg>
+                </Button>
               </li>
             );
           })}

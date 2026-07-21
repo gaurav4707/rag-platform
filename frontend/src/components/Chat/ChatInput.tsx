@@ -1,4 +1,5 @@
 import { useRef, useCallback } from "react";
+import { Button } from "../ui";
 
 interface ChatInputProps {
   onSend: (message: string) => void;
@@ -51,11 +52,12 @@ export function ChatInput({ onSend, disabled = false }: ChatInputProps) {
             className="min-h-[24px] flex-1 resize-none bg-transparent text-sm leading-6 text-surface-800 placeholder:text-surface-400 focus:outline-none disabled:opacity-50"
             aria-label="Chat message"
           />
-          <button
+          <Button
             type="button"
+            variant="primary"
             onClick={submit}
             disabled={disabled}
-            className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-accent-600 text-white transition-all duration-150 hover:bg-accent-700 focus:outline-none focus:ring-2 focus:ring-accent-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-accent-600"
+            className="!h-8 !w-8 !min-w-0 !rounded-lg !p-0"
             aria-label="Send message"
           >
             <svg
@@ -72,7 +74,7 @@ export function ChatInput({ onSend, disabled = false }: ChatInputProps) {
                 d="M6 12L3.269 3.126A9.028 9.028 0 0112 3c4.97 0 9 4.03 9 9s-4.03 9-9 9-9-4.03-9-9m12 0c0-1.657-1.343-3-3-3s-3 1.343-3 3 1.343 3 3 3 3-1.343 3-3z"
               />
             </svg>
-          </button>
+          </Button>
         </div>
         <p className="mt-1.5 px-1 text-xs text-surface-400">
           Press Enter to send, Shift+Enter for a new line

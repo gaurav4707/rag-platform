@@ -2,12 +2,10 @@ import { useRef, useState, useCallback, useEffect } from "react";
 import { Spinner } from "../Common/Spinner";
 import { useToast } from "../../hooks/useToast";
 import { notifyUploadFailed, notifyUploadCancelled } from "../../services/notifications";
-import type { UploadProgressCallback } from "../../services/documentApi";
-
-export type UploadStatus = "idle" | "uploading" | "processing" | "error";
+import type { UploadStatus, UploadLifecycle } from "../../types";
 
 interface UploadCardProps {
-  onUpload: (file: File, onProgress?: UploadProgressCallback) => Promise<void>;
+  onUpload: (file: File, lifecycle: UploadLifecycle) => Promise<void>;
 }
 
 const ACCEPTED_TYPE = "application/pdf";
@@ -123,14 +121,13 @@ export function UploadCard({ onUpload }: UploadCardProps) {
         setDisplayProgress(0);
         setHasRealProgress(false);
 
-        await onUpload(file, handleProgress);
+        await onUpload(file, {
+          onProgress: handleProgress,
+          onProcessing: () => setStatus("processing"),
+        });
 
-        setStatus("processing");
-
-        // Success - reset to idle, Sidebar toast will show success
-        setStatus("idle");
-        setDisplayProgress(0);
-        setHasRealProgress(false);
+        setStatus("success");
+        handleAutoReset(2000);
 
       } catch (err) {
         console.error("Upload failed:", err);
@@ -230,6 +227,15 @@ export function UploadCard({ onUpload }: UploadCardProps) {
             <span className="text-sm text-surface-500 dark:text-surface-400">Processing document...</span>
           </div>
         );
+      case "success":
+        return (
+          <div className="flex flex-col items-center gap-1.5 text-emerald-600 dark:text-emerald-400">
+            <svg className="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden="true">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <p className="text-sm font-medium">Document uploaded</p>
+          </div>
+        );
       case "error":
         return (
           <div className="flex flex-col items-center gap-1.5 text-red-600 dark:text-red-400">
@@ -253,7 +259,6 @@ export function UploadCard({ onUpload }: UploadCardProps) {
     }
   };
 
-  // Card always uses idle styling - no visual disabled state
   const cardClassName = `group w-full cursor-pointer rounded-xl border-2 border-dashed px-4 py-5 text-center transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-accent-500 focus:ring-offset-2 ${
     isDragging
       ? "border-accent-400 bg-accent-50 shadow-drop scale-[1.01] dark:border-accent-400 dark:bg-accent-900/20"
@@ -294,16 +299,25 @@ export function UploadCard({ onUpload }: UploadCardProps) {
         {getMainContent()}
       </div>
 
-      {(status === "uploading" || status === "processing") && (
-        <div className="mt-2 w-full" role="progressbar" aria-valuenow={status === "uploading" && hasRealProgress ? displayProgress : undefined} aria-valuemin={0} aria-valuemax={100} aria-label={status === "uploading" ? "Upload progress" : "Processing progress"} data-testid="upload-progress">
+      {status === "uploading" && (
+        <div className="mt-2 w-full" role="progressbar" aria-valuenow={hasRealProgress ? displayProgress : undefined} aria-valuemin={0} aria-valuemax={100} aria-label="Upload progress" data-testid="upload-progress">
           <div className="h-1.5 w-full rounded-full bg-surface-200 dark:bg-surface-700 overflow-hidden">
             <div
               className={`h-full rounded-full transition-all duration-300 ease-out ${
-                status === "processing" || !hasRealProgress
-                  ? "bg-accent-500 animate-pulse-soft"
-                  : "bg-accent-600 dark:bg-accent-500"
+                hasRealProgress ? "bg-accent-600 dark:bg-accent-500" : "bg-accent-500 animate-pulse-soft"
               }`}
-              style={{ width: status === "uploading" && hasRealProgress ? `${displayProgress}%` : "100%" }}
+              style={{ width: hasRealProgress ? `${displayProgress}%` : "100%" }}
+              aria-hidden="true"
+            />
+          </div>
+        </div>
+      )}
+
+      {status === "processing" && (
+        <div className="mt-2 w-full" role="progressbar" aria-label="Processing progress" data-testid="upload-progress">
+          <div className="h-1.5 w-full rounded-full bg-surface-200 dark:bg-surface-700 overflow-hidden">
+            <div
+              className="h-full w-full rounded-full bg-accent-500 animate-pulse-soft"
               aria-hidden="true"
             />
           </div>

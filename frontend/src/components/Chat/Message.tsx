@@ -1,21 +1,19 @@
-import type { Source } from "../../types";
+import type { Source, MessageState } from "../../types";
 import { CitationCard } from "./CitationCard";
 
 interface MessageProps {
   role: "user" | "assistant";
   content: string;
+  state?: MessageState;
   sources?: Source[];
-  isStreaming?: boolean;
-  streamInterrupted?: boolean;
   onRetry?: () => void;
 }
 
 export function Message({ 
   role, 
   content, 
+  state, 
   sources, 
-  isStreaming, 
-  streamInterrupted,
   onRetry 
 }: MessageProps) {
   const isUser = role === "user";
@@ -50,8 +48,12 @@ export function Message({
           <div className="min-w-0 flex-1">
             <div className="rounded-2xl rounded-tl-md border border-surface-200 bg-white px-4 py-2.5 shadow-card">
               <p className="text-sm leading-relaxed whitespace-pre-wrap text-surface-800">
-                {content}
-                {isStreaming && (
+                {state === "pending" ? (
+                  <span className="text-surface-400 italic">Thinking...</span>
+                ) : (
+                  content
+                )}
+                {state === "streaming" && (
                   <span
                     className="ml-0.5 inline-block h-[1em] w-[2px] translate-y-[2px] bg-accent-500 animate-blink"
                     aria-label="Generating response"
@@ -60,7 +62,7 @@ export function Message({
               </p>
             </div>
 
-            {streamInterrupted && onRetry && (
+            {state === "interrupted" && onRetry && (
               <div
                 className="mt-2 flex items-center gap-2 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800 animate-slide-up"
                 role="alert"
@@ -90,7 +92,7 @@ export function Message({
               </div>
             )}
 
-            {sources && sources.length > 0 && !isStreaming && !streamInterrupted && (
+            {sources && sources.length > 0 && state === "complete" && (
               <div className="mt-2.5 space-y-1.5">
                 <p className="px-1 text-xs font-medium uppercase tracking-wider text-surface-400">
                   Sources
