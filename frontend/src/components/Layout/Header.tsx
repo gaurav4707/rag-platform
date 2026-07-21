@@ -1,3 +1,5 @@
+import { Badge } from "../ui/Badge";
+
 export function Header() {
   return (
     <header className="flex flex-shrink-0 items-center gap-3 border-b border-surface-200 bg-white px-4 py-3 lg:px-6 lg:py-3.5">
@@ -28,10 +30,7 @@ export function Header() {
       </div>
 
       <div className="ml-auto flex items-center gap-2">
-        <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700">
-          <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-          Online
-        </span>
+        <Badge variant="success">Online</Badge>
       </div>
     </header>
   );

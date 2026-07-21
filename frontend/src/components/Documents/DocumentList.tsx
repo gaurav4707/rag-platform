@@ -2,6 +2,8 @@ import { useState } from "react";
 import type { Document } from "../../types";
 import { Spinner } from "../Common/Spinner";
 import { ConfirmationDialog } from "../Common";
+import { SectionTitle } from "../ui/SectionTitle";
+import { EmptyState } from "../ui/EmptyState";
 
 interface DocumentListProps {
   documents: Document[];
@@ -40,16 +42,10 @@ export function DocumentList({
 
   return (
     <div data-testid="document-list">
-      <div className="mb-2.5 flex items-center justify-between">
-        <h3 className="text-xs font-semibold uppercase tracking-wider text-surface-500">
-          Library
-        </h3>
-        {!loading && documents.length > 0 && (
-          <span className="text-xs font-medium text-surface-400" data-testid="document-count">
-            {documents.length} {documents.length === 1 ? "file" : "files"}
-          </span>
-        )}
-      </div>
+      <SectionTitle
+        title="Library"
+        count={!loading && documents.length > 0 ? documents.length : undefined}
+      />
 
       {loading && (
         <div className="space-y-2" role="status" aria-label="Loading documents" data-testid="document-loading">
@@ -66,22 +62,26 @@ export function DocumentList({
       )}
 
       {!loading && !error && documents.length === 0 && (
-        <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed border-surface-200 px-4 py-6 text-center" data-testid="document-empty">
-          <svg
-            className="h-6 w-6 text-surface-300"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            strokeWidth={1.5}
-            aria-hidden="true"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v13.5c0 .621.504 1.125 1.125 1.125h10.5c.621 0 1.125-.504 1.125-1.125V11.25a9-9 0 00-9-9z"
-            />
-          </svg>
-          <p className="text-xs text-surface-400">No documents indexed yet</p>
+        <div className="rounded-lg border border-dashed border-surface-200 px-4 py-6" data-testid="document-empty">
+          <EmptyState
+            icon={
+              <svg
+                className="mb-2 h-6 w-6 text-surface-300"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={1.5}
+                aria-hidden="true"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v13.5c0 .621.504 1.125 1.125 1.125h10.5c.621 0 1.125-.504 1.125-1.125V11.25a9-9 0 00-9-9z"
+                />
+              </svg>
+            }
+            title={<p className="text-xs text-surface-400">No documents indexed yet</p>}
+          />
         </div>
       )}
 
