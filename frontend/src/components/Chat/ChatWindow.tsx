@@ -9,9 +9,8 @@ interface ChatWindowProps {
 }
 
 export function ChatWindow({ onNewChat }: ChatWindowProps) {
-  const { messages, retry } = useConversation();
+  const { messages, streaming, retry } = useConversation();
   const bottomRef = useRef<HTMLDivElement>(null);
-  const streaming = messages.some(m => m.state === "streaming" || m.state === "pending");
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });

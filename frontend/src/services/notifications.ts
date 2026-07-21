@@ -1,4 +1,4 @@
-import { ToastContextType } from "../components/Common/ToastProvider";
+import type { ToastContextType } from "../components/Common/ToastProvider";
 import { mapApiError } from "./errorMapper";
 import { ApiError } from "./api";
 

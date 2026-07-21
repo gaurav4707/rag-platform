@@ -28,10 +28,6 @@ export interface Document {
   status: string;
 }
 
-export interface DeleteResponse {
-  status: string;
-}
-
 export type MessageState = "pending" | "streaming" | "complete" | "interrupted" | "error";
 
 export interface Message {

@@ -1,24 +1,5 @@
 import { BASE_URL } from "./api";
-import type { ChatRequest, ChatResponse, StreamCallbacks, Source } from "../types";
-
-export function sendMessage(request: ChatRequest): Promise<ChatResponse> {
-  return fetch(`${BASE_URL}/chat`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(request),
-  }).then(async (response) => {
-    if (!response.ok) {
-      throw new Error(`Chat request failed with status ${response.status}`);
-    }
-    return response.json() as Promise<ChatResponse>;
-  });
-}
-
-export interface StreamMessageOptions {
-  message: string;
-  callbacks: StreamCallbacks;
-  signal?: AbortSignal;
-}
+import type { StreamCallbacks, Source } from "../types";
 
 export async function streamMessage(
   message: string,

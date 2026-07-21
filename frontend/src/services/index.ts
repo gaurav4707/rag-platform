@@ -1,6 +1,6 @@
 export { uploadDocument, getDocuments, deleteDocument } from "./documentApi";
-export { sendMessage, streamMessage } from "./chatApi";
-export { apiRequest, BASE_URL, ApiError } from "./api";
+export { streamMessage } from "./chatApi";
+export { BASE_URL, ApiError } from "./api";
 export {
   notifyUploadSuccess,
   notifyUploadFailed,

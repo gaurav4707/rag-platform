@@ -1,6 +1,8 @@
+import { useMemo } from "react";
 import type { Source, MessageState } from "../../types";
 import { CitationCard } from "./CitationCard";
 import { useSettings } from "../../context/SettingsContext";
+import { deduplicateSources, mapToCitationViewModel } from "../../utils/citationUtils";
 
 interface MessageProps {
   role: "user" | "assistant";
@@ -20,6 +22,11 @@ export function Message({
   const isUser = role === "user";
   const { settings } = useSettings();
   const showSources = settings.retrieval.showCitations;
+
+  const citationViewModels = useMemo(() => {
+    if (!sources) return [];
+    return deduplicateSources(sources).map(mapToCitationViewModel);
+  }, [sources]);
 
   return (
     <div
@@ -100,11 +107,10 @@ export function Message({
                 <p className="px-1 text-xs font-medium uppercase tracking-wider text-surface-400">
                   Sources
                 </p>
-                {sources.map((source, idx) => (
+                {citationViewModels.map((vm) => (
                   <CitationCard
-                    key={`${source.document_id}-${idx}`}
-                    document={source.document}
-                    page={source.page}
+                    key={`${vm.documentId}-${vm.page ?? "none"}`}
+                    citation={vm}
                   />
                 ))}
               </div>

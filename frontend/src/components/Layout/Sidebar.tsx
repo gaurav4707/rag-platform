@@ -3,7 +3,7 @@ import { getDocuments, uploadDocument, deleteDocument } from "../../services/doc
 import type { Document, UploadLifecycle } from "../../types";
 import { UploadCard } from "../Upload/UploadCard";
 import { DocumentList } from "../Documents/DocumentList";
-import { useToast } from "../../hooks/useToast";
+import { useToast } from "../Common";
 import { notifyUploadFailed, notifyDeleteSuccess, notifyDeleteFailed, notifyUploadSuccess, notifyDuplicateUpload } from "../../services/notifications";
 
 export function Sidebar() {

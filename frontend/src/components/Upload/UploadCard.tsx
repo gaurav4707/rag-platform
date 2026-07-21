@@ -1,6 +1,6 @@
 import { useRef, useState, useCallback, useEffect } from "react";
 import { Spinner } from "../Common/Spinner";
-import { useToast } from "../../hooks/useToast";
+import { useToast } from "../Common";
 import { notifyUploadFailed, notifyUploadCancelled } from "../../services/notifications";
 import type { UploadStatus, UploadLifecycle } from "../../types";
 
@@ -259,7 +259,7 @@ export function UploadCard({ onUpload }: UploadCardProps) {
     }
   };
 
-  const cardClassName = `group w-full cursor-pointer rounded-xl border-2 border-dashed px-4 py-5 text-center transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-accent-500 focus:ring-offset-2 ${
+  const cardClassName = `group w-full cursor-pointer rounded-xl border-2 border-dashed px-4 py-5 text-center transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-accent-500 focus:ring-offset-2  ${
     isDragging
       ? "border-accent-400 bg-accent-50 shadow-drop scale-[1.01] dark:border-accent-400 dark:bg-accent-900/20"
       : "border-surface-300 bg-surface-50 hover:border-accent-300 hover:bg-accent-50/40 dark:border-surface-600 dark:hover:border-accent-700 dark:hover:bg-accent-900/20"
