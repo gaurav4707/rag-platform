@@ -189,6 +189,9 @@ Transform the current RAG pipeline into a robust Agentic RAG architecture.
 - [x] Tool registry
 - [x] Tool execution tracing
 - [x] Streaming tool events
+- [x] ToolExecutor multi-iteration orchestration loop
+- [x] Configurable safety limits (MAX_TOOL_ITERATIONS, MAX_TOOLS_PER_RESPONSE)
+- [x] Graceful error handling for tool failures
 
 ### Initial Tools
 
@@ -196,16 +199,16 @@ Transform the current RAG pipeline into a robust Agentic RAG architecture.
 
 ### Additional Tools
 
-- [ ] list_documents
+- [x] list_documents
+- [x] search_by_filename
 - [ ] summarize_document
-- [ ] search_by_filename
 - [ ] search_by_metadata
 
 ### Infrastructure
 
-- [ ] Conversation state
-- [ ] Agent observability
-- [ ] Debug logging
+- [x] Conversation state (ConversationState dataclass)
+- [x] Debug logging
+- [ ] Agent observability (tracing, metrics)
 
 ---
 
@@ -281,18 +284,14 @@ Future ideas intentionally postponed.
 
 # Current Sprint (Priority Order)
 
-Current focus (highest priority first):
+Current focus (highest priority first) — Milestone 5: User Experience:
 
-1. **API Integration Tests** — End-to-end tests for upload/chat/stream/delete endpoints
-2. **Docker + Docker Compose** — Containerize backend and frontend
-3. **CI/CD Pipeline** — GitHub Actions: lint, test, build
-4. **Structured Logging** — JSON logs with request IDs
-5. **Health Checks with Dependencies** — Verify ChromaDB/LLM connectivity
-6. **Conversation Memory** — SQLite-backed chat history with context injection
-7. **Observability** — Request tracing, metrics endpoint
-8. **Frontend: Settings Page** — Configure retrieval parameters
-9. **Frontend: Conversation History** — Persist and display chat sessions
-10. **Authentication** — API key based auth (future)
+1. **Better loading states** — Skeleton loaders, progress indicators
+2. **Settings page** — Configure retrieval parameters, theme
+3. **Theme support** — Dark mode, light mode
+4. **Accessibility improvements** — Screen reader support, keyboard navigation audit
+5. **Conversation management** — Persist and display chat sessions
+6. **Better citation visualization** — Inline citations, richer source cards
 
 ---
 

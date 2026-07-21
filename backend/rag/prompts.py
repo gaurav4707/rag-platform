@@ -10,6 +10,7 @@ from typing import Optional
 
 from backend.models.rag_models import RetrievalResult, RetrievedChunk
 from backend.config import CHUNK_SIZE, CHUNK_OVERLAP
+from backend.rag.tools import get_tools
 
 logger = logging.getLogger(__name__)
 
@@ -212,6 +213,59 @@ ANSWER
 ========================
 
 Provide your answer based on the retrieved context above."""
+
+
+def build_tool_descriptions() -> str:
+    """Build tool descriptions for the system prompt.
+
+    Describes each tool independently - does NOT encode workflows.
+    The LLM should infer the appropriate tool sequence.
+    """
+    tools = get_tools()
+    lines = ["AVAILABLE TOOLS:"]
+    for tool in tools:
+        name = tool.name
+        description = tool.description.strip()
+        lines.append(f"- {name}: {description}")
+    return "\n".join(lines)
+
+
+def build_system_prompt() -> str:
+    """Build the SYSTEM INSTRUCTIONS section.
+
+    Contains grounding rules, citation guidance, behavior instructions,
+    and available tool descriptions.
+    Provider-agnostic - no model-specific formatting.
+    """
+    base_prompt = """========================
+SYSTEM INSTRUCTIONS
+========================
+
+You are a Retrieval-Augmented Generation assistant specialized in answering questions using provided document context.
+
+GROUNDING RULES:
+- Answer ONLY using the provided retrieved context.
+- If the answer cannot be determined from the context, clearly state: "I don't know based on the available documents."
+- Do not fabricate, infer, or hallucinate facts not present in the context.
+- Prefer precise, direct answers over speculative ones.
+- When multiple sources provide relevant information, synthesize them while preserving attribution.
+- Preserve technical terminology and specific details from the source documents.
+
+CITATION GUIDANCE:
+- When information comes from multiple retrieved sources, synthesize the answer while preserving attribution.
+- Reference sources naturally in your response (e.g., "According to Document X..." or "Source 1 states...").
+- Do not reference internal chunk IDs or metadata fields not shown to you.
+- You do not need to cite every sentence, but key claims should be attributable to the provided sources.
+
+BEHAVIOR:
+- Be concise but complete.
+- Explain concepts in your own words - do not copy large passages verbatim.
+- Ignore irrelevant retrieved passages.
+- If the question is ambiguous, ask for clarification rather than guessing.
+
+"""
+    tool_descriptions = build_tool_descriptions()
+    return base_prompt + tool_descriptions
 
 
 def build_prompt(question: str, retrieval_result: RetrievalResult) -> str:

@@ -35,60 +35,63 @@ Every future feature should follow this architecture unless an explicit architec
                       |     React Frontend   |
                       +----------+-----------+
                                  |
-                           HTTP / Streaming
+                            HTTP / Streaming
                                  |
                       +----------v-----------+
                       |      FastAPI API     |
                       +----------+-----------+
                                  |
-                         Application Services
+                          Application Services
                                  |
-             +-------------------+-------------------+
-             |                                       |
-      Document Service                          Chat Service
-             |                                       |
-             +-------------------+-------------------+
-                                 |
-                           Agentic RAG Engine
-                                 |
-                   +-------------+-------------+
-                   |                           |
-                Agent                       Prompt Builder
-                   |
-             Tool Registry
-                   |
-      +------------+------------+--------------+
-      |                         |               |
-  Retriever Tool           Future Tools      Future Tools
-  (retrieve_context)      (Web Search,       (Calculator,
-                          Metadata, etc.)    Summarizer...)
-      |
-  Retriever (Strategy Dispatch)
-      |
-  +---+---+---+---+---+---+
-  |   |   |   |   |   |   |
-  ▼   ▼   ▼   ▼   ▼   ▼   ▼
-Similarity MMR Hybrid Query Rewrite Rerank Future
-      |
-  Query Rewriter (if enabled)
-      |
-  Vector Store (ChromaDB)
-      |
-      RetrievalResult
-      │
-      ├────────────► Prompt Builder
-      │
-      ├────────────► Citation Builder
-      │
-      └────────────► Agent
-      |
-  Embeddings
-      |
-  Splitter
-      |
-  Loader
-      |
-  Storage (PDFs)
+              +-------------------+-------------------+
+              |                                       |
+       Document Service                          RAG Service
+              |                                       |
+              +-------------------+-------------------+
+                                  |
+                            Agentic RAG Engine
+                                  |
+                    +-------------+-------------+
+                    |                           |
+              ToolExecutor                   Prompt Builder
+              (Agent Loop)
+                    |
+              Tool Registry
+                    |
+       +------------+------------+------------------+
+       |            |            |                  |
+  retrieve_    list_        search_by_           Future
+  context     documents    filename              Tools
+       |            |            |
+       |    Document Service   Document Service
+       |         |                  |
+       v         v                  v
+   Retriever (Strategy Dispatch)
+       |
+   +---+---+---+---+---+---+
+   |   |   |   |   |   |   |
+   ▼   ▼   ▼   ▼   ▼   ▼   ▼
+ Similarity MMR Hybrid Query Rewrite Rerank Future
+       |
+   Query Rewriter (if enabled)
+       |
+   Vector Store (ChromaDB)
+       |
+       RetrievalResult
+       │
+       ├────────────► Prompt Builder
+       │
+       ├────────────► Citation Builder
+       │
+       └────────────► ToolExecutor (iterative loop)
+       |
+   Embeddings
+       |
+   Splitter
+       |
+   Loader
+       |
+   Storage (PDFs)
 ```
 
 ---
@@ -125,11 +128,19 @@ project/
 │   ├── bm25.py
 │   ├── hybrid_retriever.py
 │   ├── reranker.py
+│   ├── tool_executor.py
 │   ├── tool_registry.py
 │   ├── agent.py
 │   ├── prompts.py
 │   ├── citations.py
-│   └── query_rewriter.py
+│   ├── query_rewriter.py
+│   ├── query_parser.py
+│   ├── retrieval_utils.py
+│   └── tools/
+│       ├── __init__.py
+│       ├── retrieve_context.py
+│       ├── list_documents.py
+│       └── search_by_filename.py
 │
 ├── providers/
 │   ├── __init__.py
@@ -154,22 +165,26 @@ project/
 ├── tests/
 │   ├── __init__.py
 │   ├── conftest.py
+│   ├── test_agent_tool_orchestration.py
 │   ├── test_evaluation_metrics.py
+│   ├── test_list_documents_tool.py
 │   ├── test_prompts.py
-│   └── test_retriever.py
+│   ├── test_query_parser.py
+│   ├── test_retriever.py
+│   └── test_search_by_filename_tool.py
 │
 ├── storage/
 │   ├── uploads/
 │   └── chroma_langchain_db/
 │
 ├── utils/
+│   └── performance.py
 │
 ├── frontend/
 
 ├── docs/
 
 ├── README.md
-
 ├── AGENTS.md
 ```
 
@@ -305,63 +320,59 @@ RAG Service
 
 ↓
 
-Agent
+ToolExecutor (multi-iteration loop)
+│
+├── Iteration 1: LLM decides → tool_calls?
+│   │
+│   ├── No tools → build prompt → LLM → stream answer → citations → done
+│   │
+│   └── Tool calls detected →
+│       │
+│       ├── retrieve_context → Retriever (Strategy Dispatch)
+│       │   ├── SimilarityStrategy
+│       │   ├── MMRStrategy
+│       │   ├── HybridStrategy
+│       │   └── Cross-Encoder Reranker (if enabled)
+│       │   ↓
+│       │   RetrievalResult
+│       │   ↓
+│       │   Prompt Builder → Formatted Prompt
+│       │
+│       ├── list_documents → Document Service → Document list
+│       │
+│       └── search_by_filename → Document Service → Matched documents
+│
+├── Iteration 2: LLM sees tool results, decides next action
+│   │
+│   ├── More tool calls → continue loop (safety-limited to MAX_TOOL_ITERATIONS)
+│   └── Final answer → stream tokens
+│
+↓
+
+LLM streaming
 
 ↓
 
-Retriever Tool (retrieve_context)
-
-↓
-
-Retriever (Strategy Dispatch)
-├── SimilarityStrategy
-├── MMRStrategy
-├── HybridStrategy
-├── QueryRewriteStrategy (future)
-└── RerankStrategy (future)
-
-↓
-
-Vector Store
-
-↓
-
-Cross-Encoder Reranker (if enabled)
-├── Receives query + candidate chunks
-├── Computes relevance scores
-├── Reranks by cross-encoder score
-└── Returns top-K reranked chunks
-
-↓
-
-RetrievalResult
-      │
-      ├────────────► Prompt Builder (prompts.py)
-      │                  │
-      │                  ▼
-      │            Formatted Prompt
-      │                  │
-      │                  ▼
-      └────────────► LLM ──► Answer
-      │
-      ├────────────► Citation Builder
-      │
-      └────────────► Agent
-
-↓
-
-ChatResult
+ChatResult (answer + sources + tool_calls)
 
 ↓
 
 Streaming Response
 ```
 
-The Agent decides which tool(s) to invoke.
+The ToolExecutor orchestrates an iterative loop:
 
-For the MVP there is only one tool:
+1. LLM decides which tool(s) to invoke (bound via `bind_tools()`)
+2. Tools execute, results flow back into conversation state
+3. LLM sees results and decides next action
+4. Loop continues until no more tool calls or max iterations reached
+5. Final answer streamed with citations and tool call metadata
 
-- retrieve_context
+Current tools:
+
+- **retrieve_context** — Semantic retrieval via the Retriever
+- **list_documents** — Lists all indexed documents (delegates to Document Service)
+- **search_by_filename** — Searches documents by filename pattern (delegates to Document Service)
 
 The architecture is intentionally designed so additional tools can be added without changing the API layer.
 
@@ -682,42 +693,57 @@ It reuses the RetrievalResult produced earlier in the request.
 
 ## tool_registry.py
 
-Registers all Agent tools and provides them to the Agent.
+Registers all Agent tools and provides them to the ToolExecutor.
+
+Tools are defined as individual modules in `backend/rag/tools/` and registered in `tools/__init__.py`.
 
 Current:
 
-- retrieve_context
+- `retrieve_context` — Semantic retrieval (delegates to `retriever.py`)
+- `list_documents` — List indexed documents (delegates to `document_service.py`)
+- `search_by_filename` — Search documents by filename (delegates to `document_service.py`)
 
 Future:
 
-- list_documents
 - summarize_document
-- search_by_filename
 - search_by_metadata
 - web_search
 - calculator
 
-Tool implementations should remain thin and delegate business logic to the appropriate modules.
+Tool implementations remain thin and delegate business logic to the appropriate modules.
+
+---
+
+## tool_executor.py
+
+Defines the tool orchestration layer:
+
+- **ToolExecutor** — Multi-iteration loop that drives the agent workflow
+- **ConversationState** — Tracks conversation history, tool calls, and retrieval results during a request
+- **ToolExecutionResult** — Structured result of a single tool execution
+- **Safety limits** — Configurable `max_iterations` (prevents infinite loops) and `max_tools_per_response` (limits parallel tool calls)
+- Singleton instance via `get_tool_executor()` with `_reset_executor()` for test isolation
+
+The ToolExecutor:
+
+1. Creates a ConversationState with the user question
+2. Binds all registered tools to the LLM
+3. Loops: LLM decides → execute tools → add results to state → repeat
+4. Returns final ChatResult when LLM produces a final answer
+5. Handles unknown tools and tool exceptions gracefully
 
 ---
 
 ## agent.py
 
-Responsible only for:
+Provides high-level entry points that use the ToolExecutor:
 
-- Orchestrating the RAG workflow: retrieve → build prompt → generate answer
-- Calling the retrieve_context tool via the Tool Registry
-- Building the prompt using the Prompt Builder (prompts.py)
-- Sending the prompt to the LLM for answer generation
-- Streaming the LLM response
-- Building citations from the RetrievalResult via the Citation Builder
-- Assembling the ChatResult (answer + citations + tool_calls)
+- `invoke(question)` — Synchronous entry point, returns `ChatResult`
+- `stream_events(question)` — Async generator that yields tool_calls, messages, and metadata events
 
 The Agent:
 
-- Invokes retrieve_context tool to get RetrievalResult
-- Calls build_prompt(question, retrieval_result) from Prompt Builder
-- Streams model output using the LLM's native streaming
+- Delegates orchestration to ToolExecutor
 - Never queries the vector store directly
 - Contains no retrieval logic — that lives in retriever.py
 
@@ -783,19 +809,17 @@ Storage
 Inside the RAG layer
 
 ```
-Agent
+Agent / ToolExecutor
       │
       ▼
 Tool Registry
       │
       ▼
-Tools (retrieve_context, etc.)
+Tools (retrieve_context, list_documents, search_by_filename)
       │
-      ▼
-Retriever
+      ├────────► Retriever (for retrieve_context)
       │
-      ▼
-Vector Store
+      ├────────► Document Service (for list_documents, search_by_filename)
       │
       ▼
 RetrievalResult
@@ -803,6 +827,14 @@ RetrievalResult
       ├────────► Prompt Builder
       └────────► Citation Builder
 ```
+
+Dependencies:
+
+- Tools depend on Services and the Retriever
+- The ToolExecutor depends on the Tool Registry and LLM
+- RetrievalResult flows to Prompt Builder and Citation Builder only
+- Prompt Builder never performs retrieval
+- Citation Builder never performs retrieval
 
 Dependencies must always point downward.
 
@@ -833,11 +865,11 @@ The architecture should allow adding:
 
 ## Agent
 
-- Multiple tools
-- Tool routing
-- Multi-step reasoning
 - Reflection
 - Planning
+- Multi-step reasoning
+- Tool routing
+- Multiple simultaneous tools
 
 ## Infrastructure
 

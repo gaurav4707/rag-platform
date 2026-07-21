@@ -1,5 +1,11 @@
-from backend.rag.retriever import retrieve_context
+"""Tool Registry for the Agentic RAG system.
+
+Registers and exposes available tools to the Agent.
+"""
+
+from backend.rag.tools import get_tools as _get_tools
 
 
 def get_tools() -> list:
-    return [retrieve_context]
+    """Return all registered tools."""
+    return _get_tools()

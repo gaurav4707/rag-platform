@@ -240,32 +240,36 @@ Transform the application into a true Agentic RAG platform.
 
 Completed
 
-- Agent implementation using LangChain tool-calling
-- Tool registry
-- Tool execution
-- Streaming tool calls
+- ToolExecutor with multi-iteration orchestration loop
+- ConversationState for per-request state tracking
+- Dynamic tool registry (tool_registry.py + tools/ package)
+- Native multi-tool calling via LLM bind_tools()
+- Streaming tool events
+- Configurable safety limits (MAX_TOOL_ITERATIONS, MAX_TOOLS_PER_RESPONSE)
+- Graceful tool error handling (unknown tools, exceptions)
+- Provider-independent agent layer (via backend/providers/)
 - retrieve_context tool
+- list_documents tool (delegates to Document Service)
+- search_by_filename tool (delegates to Document Service)
+- Agent streaming tests
+- Tool orchestration tests
 
-Planned
-
-- Provider-independent agent layer
-- Conversation state
-- Agent observability
-
-Initial Tools
+Current Tools
 
 - retrieve_context
+- list_documents
+- search_by_filename
 
 Future Tools
 
-- list_documents
 - summarize_document
-- search_documents
 - search_by_metadata
+- web_search
+- calculator
 
 ---
 
-## Milestone 5 — User Experience 🚧
+## Milestone 5 — User Experience 🚧 (ACTIVE)
 
 Deliverables
 

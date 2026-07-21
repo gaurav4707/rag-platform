@@ -163,6 +163,25 @@ def _log_retrieval_details(
         )
 
 
+# Backward compatibility function for tests
+def _rewrite_query(query: str, strategy: str = "none") -> str:
+    """Internal rewrite query function used by backward compatibility wrapper."""
+    rewriter = get_query_rewriter(strategy)
+    result = rewriter.rewrite(query)
+    return result.retrieval_query
+
+
+def rewrite_query(query: str, strategy: str = "none") -> str:
+    """Backward-compatible rewrite_query function.
+
+    This function is maintained for backward compatibility with existing tests
+    and code that imports from backend.rag.retriever.rewrite_query.
+
+    New code should use the QueryRewriter classes directly.
+    """
+    return _rewrite_query(query, strategy)
+
+
 @tool(response_format="content_and_artifact")
 def retrieve_context(
     query: str,
@@ -276,22 +295,3 @@ def retrieve_context(
     )
 
     return serialized, retrieval_result
-
-
-# Backward compatibility function for tests
-def _rewrite_query(query: str, strategy: str = "none") -> str:
-    """Internal rewrite query function used by backward compatibility wrapper."""
-    rewriter = get_query_rewriter(strategy)
-    result = rewriter.rewrite(query)
-    return result.retrieval_query
-
-
-def rewrite_query(query: str, strategy: str = "none") -> str:
-    """Backward-compatible rewrite_query function.
-
-    This function is maintained for backward compatibility with existing tests
-    and code that imports from backend.rag.retriever.rewrite_query.
-
-    New code should use the QueryRewriter classes directly.
-    """
-    return _rewrite_query(query, strategy)

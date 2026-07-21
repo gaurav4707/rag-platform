@@ -323,41 +323,48 @@ The Chat API forwards the request to the RAG Service.
 
 ## Step 2 — Agent Receives Request
 
-Module
+Modules
 
 ```
-agent.py
+agent.py / tool_executor.py
 ```
 
 Responsibilities
 
 - Receive conversation
-- Decide which tool(s) to invoke
-- Coordinate tool execution
-- Stream generated tokens
+- Decide which tool(s) to invoke via LLM tool-calling
+- Coordinate multi-tool execution in an iterative loop
+- Stream generated tokens and tool events
 
 The Agent does **not** perform retrieval directly.
+
+Tool execution loop:
+
+1. LLM receives conversation state with available tools bound
+2. LLM decides which tools to call (if any)
+3. ToolExecutor executes each tool, collects results
+4. Results added to ConversationState
+5. LLM re-invoked with updated state
+6. Loop continues until final answer or max iterations
 
 ---
 
 ## Step 3 — Tool Selection
 
-Current Tool
+Current Tools
 
-```
-retrieve_context
-```
+- `retrieve_context` — Semantic retrieval from indexed documents
+- `list_documents` — List all indexed documents with metadata
+- `search_by_filename` — Find documents by filename (case-insensitive, partial match)
 
 Future Tools
 
-- list_documents
 - summarize_document
 - search_by_metadata
-- search_by_filename
 - web_search
 - calculator
 
-The Agent determines which tools are needed to answer the request.
+The ToolExecutor binds all registered tools to the LLM. The LLM determines which tools are needed to answer the request. Tool results are fed back into the conversation for the next LLM iteration.
 
 ---
 
@@ -748,7 +755,6 @@ Streaming Response
 
 ## Agent
 
-- Multiple tools
 - Reflection
 - Planning
 - Multi-step reasoning
@@ -852,9 +858,17 @@ Tools
 - Only expose capabilities to the Agent.
 - Never duplicate retrieval already performed by the retriever.
 
-Agent
+Agent / ToolExecutor
 
 - Only orchestrates tool execution and communicates with the LLM.
+- Delegates tool implementation to individual tool modules.
+- Never performs retrieval, prompt construction, or citation building.
+
+ConversationState
+
+- Only tracks state during a single request.
+- Contains messages, tool calls, and retrieval results.
+- Never performs business logic.
 
 Responsibilities should never overlap.
 

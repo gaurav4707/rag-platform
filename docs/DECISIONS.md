@@ -967,17 +967,16 @@ This section will grow throughout the project.
 
 Potential future decisions include:
 
-- Conversation memory strategy
-- Agent planning strategy
-- Tool selection policies
-- Hybrid retrieval (implemented - see ADR-016)
-- Reranking models
+- Conversation memory strategy (SQLite-backed)
+- Agent planning and reflection strategy
+- Reranking models (LLM-based, API-based)
 - OCR integration
 - Multi-agent workflows
 - Authentication
 - Deployment architecture
 - Caching strategy
 - Observability and tracing
+- Prompt injection defense
 
 ---
 
@@ -1550,6 +1549,284 @@ This preserves the single-retrieval invariant: the `RetrievalResult` flows to Pr
 - Multi-modal prompts (images, tables) are introduced
 - Conversation history requires context injection
 - Evaluation shows prompt format significantly impacts quality
+
+---
+
+# ADR-021
+
+## Title
+
+Native Tool Calling via ToolExecutor
+
+**Status**
+
+Accepted
+
+### Context
+
+Initial agent implementation embedded orchestration directly in `agent.py` with a single `retrieve_context` tool. As more tools were planned (`list_documents`, `search_by_filename`), the orchestration logic needed to support:
+- Multiple tools
+- Iterative tool selection (LLM chooses different tools across iterations)
+- Per-request conversation state
+- Configurable safety limits (max iterations, max tools per response)
+- Graceful error handling for unknown tools and tool failures
+- Streaming support for both tool events and answer tokens
+
+### Decision
+
+Introduce a dedicated **ToolExecutor** class in `tool_executor.py` that owns the tool orchestration loop:
+
+1. **Multi-Iteration Loop**: The executor calls the LLM with bound tools, executes any tool calls the LLM requests, adds results to conversation state, and re-invokes the LLM — until the LLM produces a final answer or the iteration limit is reached.
+2. **ConversationState**: A per-request dataclass tracking messages (Human, AI, Tool), tool call metadata, and retrieval results.
+3. **Safety Limits**: Configurable `max_iterations` (default 10, prevents infinite loops) and `max_tools_per_response` (default 5, limits parallel tool calls).
+4. **Graceful Error Handling**: Unknown tools and tool exceptions produce structured `ToolExecutionResult` with error details, allowing the LLM to recover or explain.
+5. **Two Entry Points**: `ToolExecutor.execute()` for synchronous use and `agent.stream_events()` for streaming via async generator.
+6. **Singleton**: Default executor cached via `get_tool_executor()` for backward compatibility; `_reset_executor()` exists only for test isolation.
+
+### Alternatives Considered
+
+#### 1. LangChain AgentExecutor
+
+LangChain's built-in `AgentExecutor` class provides similar functionality. Rejected because:
+- Tight coupling to LangChain's message format and execution model
+- Difficult to customize tool result handling and error recovery
+- Streaming behavior is harder to control
+
+#### 2. Embedded in agent.py
+
+Keep orchestration in agent.py. Rejected because:
+- Violates single responsibility as agent.py grew
+- Harder to test orchestration independently
+- Duplicated logic between streaming and non-streaming paths
+
+#### 3. State Machine
+
+Formal state machine for orchestration. Rejected because:
+- Over-engineered for current needs
+- LLM already acts as the decision-maker
+
+### Consequences
+
+**Advantages:**
+- Clean separation: ToolExecutor owns orchestration, agent.py provides entry points
+- Testable: Orchestration logic can be tested with mocked LLM and tools
+- Extensible: New safety limits, tool types, and iteration strategies can be added without changing agent.py
+- Streaming: Single orchestration that works for both synchronous and async streaming
+
+**Trade-offs:**
+- Additional module and class
+- Singleton pattern requires test isolation helper
+- `_reset_executor()` is a private testing-only API
+
+### Revisit When
+
+- Multi-agent orchestration is needed
+- Complex planning strategies replace iterative tool selection
+- Workflow-based orchestration (DAG, LangGraph) is introduced
+
+---
+
+# ADR-022
+
+## Title
+
+ConversationState for Per-Request State Tracking
+
+**Status**
+
+Accepted
+
+### Context
+
+During a single request, the ToolExecutor loop may invoke the LLM multiple times with different tool results. State management requires:
+- Tracking conversation history (user message, AI responses, tool results)
+- Collecting tool call metadata for the final response
+- Accumulating retrieval results for citation generation
+- Proper LangChain message format for LLM consumption
+
+Previously, state was managed ad-hoc in agent.py without a structured container.
+
+### Decision
+
+Introduce `ConversationState` dataclass in `tool_executor.py`:
+
+```python
+@dataclass
+class ConversationState:
+    messages: list                      # LangChain messages (Human, AI, Tool)
+    tool_calls: list[dict]             # Tool call metadata for final response
+    retrieval_results: list[RetrievalResult]  # Accumulated for citation building
+    tool_execution_results: list[ToolExecutionResult]
+```
+
+Methods provide typed message creation:
+- `add_user_message(content)` → HumanMessage
+- `add_assistant_message(content, tool_calls)` → AIMessage with tool_calls
+- `add_tool_message(tool_call_id, content, artifact)` → ToolMessage
+- `get_messages_for_llm()` → Returns messages in LLM-compatible format
+
+### Alternatives Considered
+
+#### 1. Ad-hoc lists in agent.py
+
+Simple but leads to scattered state management and makes testing harder.
+
+#### 2. LangChain's built-in state
+
+LangChain provides conversation buffers, but they don't track tool calls and retrieval results separately.
+
+#### 3. Dedicated database
+
+Overkill for per-request state. Conversations are ephemeral within a single request.
+
+### Consequences
+
+**Advantages:**
+- Single place for per-request state
+- Clear message creation API
+- Easy to test and extend
+- Separate tracking of tool calls, retrieval results, and execution results
+
+**Trade-offs:**
+- Creates a dependency on LangChain message types
+- State is memory-only for the duration of a single request
+
+### Revisit When
+
+- Persistent conversation memory is introduced (cross-request state)
+- Multi-agent conversations need shared state
+
+---
+
+# ADR-023
+
+## Title
+
+Dynamic Tool Registry with Individual Tool Modules
+
+**Status**
+
+Accepted
+
+### Context
+
+Adding new tools required modifying the registry and understanding the tool registration mechanism. Each tool previously had its implementation scattered across modules. As the platform grows to support more tools, a clear tool registration pattern is needed.
+
+### Decision
+
+Organize tools as individual modules in `backend/rag/tools/` with a central registry in `tools/__init__.py`:
+
+```
+backend/rag/tools/
+├── __init__.py           # Exports get_tools() + individual tool functions
+├── retrieve_context.py   # Re-exports from retriever.py
+├── list_documents.py     # LangChain @tool, delegates to Document Service
+└── search_by_filename.py # LangChain @tool, delegates to Document Service
+```
+
+Each tool:
+- Is a LangChain `@tool` with `response_format="content_and_artifact"`
+- Has a clear description for LLM tool selection
+- Delegates business logic to the appropriate service
+- Returns `(serialized_string, artifact)` tuple
+
+The registry:
+- `tool_registry.py` provides backward-compatible `get_tools()` that delegates to `tools.get_tools()`
+- Adding a new tool requires: create module in `tools/`, add to `tools/__init__.py`, done
+
+### Alternatives Considered
+
+#### 1. All tools in one file
+
+Simple but becomes unwieldy as tool count grows.
+
+#### 2. Decorator-based auto-registration
+
+Convenient but creates magic imports and makes it harder to see all available tools.
+
+#### 3. Configuration-driven registry
+
+YAML/JSON tool definitions. Rejected because tool logic still needs Python.
+
+### Consequences
+
+**Advantages:**
+- Clear pattern for adding tools: one file per tool
+- Tools are self-documenting (description + type hints)
+- Central registry provides visibility into all available tools
+- Backward compatible via `tool_registry.py`
+
+**Trade-offs:**
+- More files than monolithic approach
+- Each tool must be explicitly imported in `__init__.py`
+
+### Revisit When
+
+- 10+ tools exist and discovery/search becomes useful
+- Dynamic tool loading from plugins is needed
+
+---
+
+# ADR-024
+
+## Title
+
+Configurable Safety Limits for Tool Execution
+
+**Status**
+
+Accepted
+
+### Context
+
+The tool execution loop can iterate indefinitely if the LLM keeps requesting tool calls. Without safety limits, a misbehaving LLM or buggy tool could:
+- Consume excessive tokens and time
+- Loop infinitely
+- Execute too many parallel tool calls
+
+### Decision
+
+Introduce two configurable safety limits in `config.py`:
+
+```
+MAX_TOOL_ITERATIONS = 10     # Maximum tool loop iterations per request
+MAX_TOOLS_PER_RESPONSE = 5   # Maximum tool calls in a single LLM response
+```
+
+Both are configurable via `ToolExecutor.__init__()` parameters and via config constants:
+
+- **MAX_TOOL_ITERATIONS**: When exceeded, execution stops with "Maximum tool iterations exceeded" message. Prevents infinite loops.
+- **MAX_TOOLS_PER_RESPONSE**: When an LLM response requests more tools than this limit, excess calls are truncated. Prevents resource exhaustion from parallel tool calls.
+
+### Alternatives Considered
+
+#### 1. No limits
+
+Simple but dangerous — production systems need guardrails against runaway loops.
+
+#### 2. Timeout-based limits
+
+Limit by wall-clock time instead of iteration count. More robust but harder to implement correctly across async/sync paths.
+
+#### 3. Token budget limits
+
+Limit by estimated token consumption. More precise but complex and model-dependent.
+
+### Consequences
+
+**Advantages:**
+- Prevents infinite loops and resource exhaustion
+- Simple to understand and configure
+- Both limits can be tuned per deployment
+
+**Trade-offs:**
+- Hard iteration limits may cut off legitimate multi-step reasoning
+- Time-based limits would be more robust for long-running tools
+
+### Revisit When
+
+- Timeout-based or token-budget limits are needed
+- Per-request configuration of safety limits is required
 
 ---
 

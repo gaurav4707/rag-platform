@@ -64,3 +64,13 @@ CHUNK_OVERLAP = 200
 # -----------------------------------------------------------------------------
 
 TOP_K = 4
+
+# -----------------------------------------------------------------------------
+# Agent Tool Execution Safety Limits
+# -----------------------------------------------------------------------------
+
+# Maximum number of tool execution iterations (prevents infinite loops)
+MAX_TOOL_ITERATIONS = 10
+
+# Maximum number of tool calls allowed in a single LLM response
+MAX_TOOLS_PER_RESPONSE = 5

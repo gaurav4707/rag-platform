@@ -1,30 +1,105 @@
-# RAG Agent - Agentic Retrieval-Augmented Generation Platform
+# RAG Agent — Agentic Retrieval-Augmented Generation Platform
 
-A production-style Agentic RAG platform with PDF upload, semantic retrieval, and streaming responses.
+A production-style **Agentic RAG** platform that enables users to upload PDF documents, ask questions via an intelligent conversational agent, and receive grounded answers with source citations.
+
+Unlike traditional RAG, an **LLM-powered Agent** selects and invokes tools to answer requests, supporting multi-step reasoning across document search and retrieval.
+
+---
 
 ## Architecture
 
-- **Frontend**: React 18 + TypeScript + Vite + Tailwind CSS
-- **Backend**: FastAPI + LangChain + ChromaDB
-- **Embeddings**: BAAI/bge-base-en-v1.5 (HuggingFace)
-- **LLM**: Groq (llama-3.1-8b-instant)
+```
+Frontend → API → Services → Agent → Tool Registry → Tools → Retriever → Vector Store
+```
 
-## Running the Application
+| Layer | Technology |
+|-------|------------|
+| **Frontend** | React 18 + TypeScript + Vite + Tailwind CSS |
+| **API** | FastAPI (thin REST endpoints) |
+| **Services** | Document Service, RAG Service |
+| **Agent** | ToolExecutor with multi-iteration orchestration loop |
+| **Tools** | retrieve_context, list_documents, search_by_filename |
+| **Retrieval** | Similarity, MMR, Hybrid (Dense + BM25 + RRF), Cross-Encoder Reranking |
+| **Vector Store** | ChromaDB (persistent, local) |
+| **Embeddings** | BAAI/bge-base-en-v1.5 (HuggingFace) |
+| **LLM** | Groq (llama-3.1-8b-instant) |
+
+---
+
+## Current Capabilities
+
+- **PDF Upload** — Drag-and-drop upload with validation, SHA-256 deduplication
+- **Document Indexing** — Text extraction, chunking, embedding, vector storage
+- **Semantic Retrieval** — Similarity search, MMR, Hybrid (Dense + BM25 + RRF)
+- **Query Rewriting** — LLM-based conversational query rewriting with heuristic skip
+- **Cross-Encoder Reranking** — Local HF model for relevance scoring
+- **Agentic Tool Orchestration** — LLM decides which tools to invoke:
+  - `retrieve_context` — Semantic document retrieval
+  - `list_documents` — List all indexed documents
+  - `search_by_filename` — Find documents by filename
+- **Streaming Responses** — Real-time token streaming with tool event metadata
+- **Source Citations** — Grounded answers with document, page, and score
+- **Document Management** — List, delete, duplicate detection
+- **Retrieval Evaluation** — CLI-based offline benchmarking (Precision@K, Recall@K, MRR, NDCG, MAP, F1)
+
+---
+
+## Milestone Status
+
+| Milestone | Status |
+|-----------|--------|
+| 1. Backend Foundation | ✅ Complete |
+| 2. Frontend Foundation | ✅ Complete |
+| 3. Retrieval Intelligence | ✅ Complete |
+| 4. Agent Foundations | ✅ Complete |
+| 5. User Experience | 🚧 Active |
+| 6. Advanced Agentic RAG | ⏳ Planned |
+
+---
+
+## Setup
+
+### Backend
 
 ```bash
-# Backend
 cd backend
-python -m uvicorn app:app --reload --port 8000
+python -m venv .venv
+source .venv/bin/activate
+pip install -r ../requirements.txt
 
-# Frontend
+# Set your Groq API key
+export GROQ_API_KEY=your_key_here
+
+# Run the server
+python -m uvicorn app:app --reload --port 8000
+```
+
+### Frontend
+
+```bash
 cd frontend
 npm install
 npm run dev
 ```
 
-## Running E2E Tests
+Open `http://localhost:5173` in your browser.
 
-The end-to-end test suite validates the PDF upload pipeline against a real backend.
+---
+
+## Testing
+
+### Backend Tests
+
+```bash
+# Run all backend tests
+cd backend
+python -m pytest tests/ -v
+
+# Run with coverage
+python -m pytest tests/ --cov=backend --cov-report=term
+```
+
+### Frontend E2E Tests
 
 ```bash
 cd frontend
@@ -37,33 +112,72 @@ npm run test:e2e:ui
 
 # Run headed (visible browser)
 npm run test:e2e:headed
-
-# View HTML report after test run
-npx playwright show-report
 ```
 
-### Test Scenarios
+### E2E Test Scenarios
 
-| Test | Description | Expected |
-|------|-------------|----------|
-| Test 1 | Valid PDF upload | Success toast, document appears, uploader resets |
-| Test 2 | Blank PDF rejected | Error toast "Document Processing Failed", no document added |
-| Test 3 | Corrupted PDF rejected | Error toast "Invalid PDF", no document added |
-| Test 4 | Duplicate PDF rejected | Info toast "Document Already Exists", no duplicate added |
-| Test 5 | Network interruption | Error toast "Connection Lost", uploader resets |
-| Test 6 | 5 sequential uploads | No stuck state, correct toast counts, correct document list |
+| Test | Description |
+|------|-------------|
+| Valid PDF upload | Success toast, document appears, uploader resets |
+| Blank PDF rejected | Error toast, no document added |
+| Corrupted PDF rejected | Error toast "Invalid PDF" |
+| Duplicate PDF rejected | Info toast "Document Already Exists" |
+| Network interruption | Error toast "Connection Lost" |
+| 5 sequential uploads | No stuck state, correct counts |
 
-### Test Fixtures
+---
 
-Static PDF fixtures in `frontend/tests/fixtures/`:
-- `valid.pdf` - Valid PDF with text content
-- `valid2.pdf` - Second valid PDF with different content
-- `blank.pdf` - Valid PDF structure, no extractable text
-- `corrupted.pdf` - Invalid PDF binary
-- `duplicate.pdf` - Copy of `valid.pdf` (same SHA256)
+## Benchmarking
 
-### Requirements
+Run retrieval quality evaluations:
 
-- Backend must be running on `http://localhost:8000` (auto-started by Playwright)
-- Frontend dev server on `http://localhost:5173` (auto-started by Playwright)
-- Chromium browser (installed via `npx playwright install chromium`)
+```bash
+python -m backend.evaluation.cli \
+    --dataset backend/evaluation/data/test_queries.json \
+    --top-k 5 \
+    --search-type hybrid
+```
+
+---
+
+## Project Structure
+
+```
+├── backend/
+│   ├── api/             # REST endpoints (thin)
+│   ├── services/        # Business logic
+│   ├── rag/             # RAG engine
+│   │   ├── agent.py     # Entry points
+│   │   ├── tool_executor.py  # Orchestration loop
+│   │   ├── tools/       # Tool implementations
+│   │   ├── retriever.py # Retrieval orchestration
+│   │   ├── prompts.py   # Prompt construction
+│   │   ├── citations.py # Citation building
+│   │   └── vector_store.py
+│   ├── providers/       # LLM + Embedding factories
+│   ├── models/          # Data models
+│   ├── evaluation/      # Offline benchmarking
+│   └── tests/           # Test suite (209+ tests)
+├── frontend/            # React + TypeScript
+├── docs/                # Architecture documentation
+└── storage/             # PDF + ChromaDB persistence
+```
+
+---
+
+## Documentation
+
+| Document | Description |
+|----------|-------------|
+| `docs/ARCHITECTURE.md` | System architecture and data flow |
+| `docs/RAG_PIPELINE.md` | Complete RAG pipeline specification |
+| `docs/PROJECT_PLAN.md` | Milestone roadmap and status |
+| `docs/API_SPEC.md` | Public API contract |
+| `docs/DECISIONS.md` | Architecture Decision Records |
+| `AGENTS.md` | AI coding agent profiles and rules |
+
+---
+
+## License
+
+MIT

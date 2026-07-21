@@ -121,7 +121,10 @@ def process_upload(file_content: bytes, original_filename: str) -> dict:
 
 def list_indexed_documents() -> list[dict]:
     """Return all indexed documents from the vector store."""
-    return list_vector_documents()
+    docs = list_vector_documents()
+    for doc in docs:
+        doc["status"] = "indexed"
+    return docs
 
 
 def delete_document(document_id: str) -> None:
@@ -156,3 +159,23 @@ def delete_document(document_id: str) -> None:
     saved_path = UPLOAD_DIR / f"{document_id}.pdf"
     if saved_path.exists():
         saved_path.unlink()
+
+
+def search_documents_by_filename(filename: str) -> list[dict]:
+    """Search indexed documents by filename (case-insensitive, partial match).
+
+    Args:
+        filename: Filename or partial filename to search for.
+
+    Returns:
+        List of matching document metadata dicts with keys:
+        document_id, filename, file_hash, status.
+    """
+    docs = list_vector_documents()
+    filename_lower = filename.lower()
+    matches = [
+        {**doc, "status": "indexed"}
+        for doc in docs
+        if filename_lower in doc["filename"].lower()
+    ]
+    return matches
