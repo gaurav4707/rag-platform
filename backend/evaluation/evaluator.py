@@ -93,10 +93,13 @@ def evaluate_single_query(
     logger.info("Evaluating query: %s", query.id)
 
     # Run retrieval using existing retriever
-    _, retrieval_result = retrieve_context(
-        query=query.question,
-        config=config,
+    retrieval_response = retrieve_context.invoke(
+        {
+            "query": query.question,
+            "config": config,
+        }
     )
+    _, retrieval_result = retrieval_response
 
     # Extract retrieved document IDs (ranked)
     retrieved_doc_ids = extract_document_ids(retrieval_result)
@@ -176,7 +179,6 @@ def run_evaluation(
     report = EvaluationReport(
         timestamp=datetime.now().isoformat(),
         total_queries=len(queries),
-        top_k=top_k,
         metrics=aggregated,
         results=results,
         retrieval_config=config_dict,

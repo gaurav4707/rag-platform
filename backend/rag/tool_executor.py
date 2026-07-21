@@ -119,7 +119,7 @@ class ToolExecutor:
             if not tool_calls:
                 # No tool calls - final answer
                 logger.debug("LLM returned final answer (no tool calls)")
-                return self._build_final_result(state, response.content)
+                return self._build_final_result(state, str(response.content))
 
             # Limit tools per response
             if len(tool_calls) > self.max_tools_per_response:
@@ -161,7 +161,7 @@ class ToolExecutor:
 
             # Add assistant message with tool calls to conversation
             state.add_assistant_message(
-                content=response.content or "",
+                content=response.content if isinstance(response.content, str) else "",
                 tool_calls=tool_calls,
             )
 

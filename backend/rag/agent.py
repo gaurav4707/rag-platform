@@ -68,7 +68,8 @@ async def stream_events(question: str) -> AsyncGenerator[tuple[str, object], Non
         if not tool_calls:
 # No tool calls - final answer, stream it
             logger.debug("LLM returned final answer (no tool calls)")
-            async for item in _stream_final_answer(state, response.content, llm):
+            final_answer = response.content if isinstance(response.content, str) else str(response.content or "")
+            async for item in _stream_final_answer(state, final_answer, llm):
                 yield item
             return
 
@@ -121,7 +122,7 @@ async def stream_events(question: str) -> AsyncGenerator[tuple[str, object], Non
 
         # Add assistant message with tool calls to conversation
         state.add_assistant_message(
-            content=response.content or "",
+            content=str(response.content or ""),
             tool_calls=tool_calls,
         )
 
@@ -191,21 +192,15 @@ async def _stream_final_answer(
     llm: Any,
 ) -> AsyncGenerator[tuple[str, object], None]:
     """Stream the final answer and yield metadata."""
+    # The answer parameter is already the final answer from the LLM
+    # Just yield it as a message chunk
+    message_chunk = type("MessageChunk", (), {
+        "text": answer,
+    })()
+    yield "messages", message_chunk
+
+    # Yield final metadata with sources
     merged_retrieval = merge_retrieval_results(state.retrieval_results)
-    if merged_retrieval is not None:
-        prompt = build_prompt(state.messages[0].content if state.messages else "", merged_retrieval)
-    else:
-        from backend.rag.prompts import build_system_prompt
-        user_question = state.messages[0].content if state.messages else ""
-        prompt = build_system_prompt() + "\n\nUser Question:\n" + user_question + "\n\nAnswer:"
-
-    async for chunk in llm.astream(prompt):
-        if chunk.content:
-            message_chunk = type("MessageChunk", (), {
-                "text": chunk.content,
-            })()
-            yield "messages", message_chunk
-
     sources = build_sources(merged_retrieval) if merged_retrieval else []
     yield "metadata", {
         "sources": [

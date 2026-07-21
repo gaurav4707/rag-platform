@@ -7,7 +7,7 @@ import argparse
 import json
 import sys
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 from backend.config import (
     CHROMA_COLLECTION_NAME,
@@ -148,7 +148,7 @@ def format_human_report(
     embedding_model: str,
     embedding_loads: bool,
     metadata_keys: list,
-    sample_chunk: Optional[object],
+    sample_chunk: Optional[Any],
     validation_results: dict,
 ) -> str:
     """Format the human-readable debug report."""
@@ -253,7 +253,7 @@ def build_json_report(
     embedding_model: str,
     embedding_loads: bool,
     metadata_keys: list,
-    sample_chunk: Optional[object],
+    sample_chunk: Optional[Any],
     validation_results: dict,
 ) -> dict:
     """Build JSON report dictionary."""
