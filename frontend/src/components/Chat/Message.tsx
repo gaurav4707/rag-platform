@@ -1,5 +1,6 @@
 import type { Source, MessageState } from "../../types";
 import { CitationCard } from "./CitationCard";
+import { useSettings } from "../../context/SettingsContext";
 
 interface MessageProps {
   role: "user" | "assistant";
@@ -17,6 +18,8 @@ export function Message({
   onRetry 
 }: MessageProps) {
   const isUser = role === "user";
+  const { settings } = useSettings();
+  const showSources = settings.retrieval.showCitations;
 
   return (
     <div
@@ -92,7 +95,7 @@ export function Message({
               </div>
             )}
 
-            {sources && sources.length > 0 && state === "complete" && (
+            {showSources && sources && sources.length > 0 && state === "complete" && (
               <div className="mt-2.5 space-y-1.5">
                 <p className="px-1 text-xs font-medium uppercase tracking-wider text-surface-400">
                   Sources

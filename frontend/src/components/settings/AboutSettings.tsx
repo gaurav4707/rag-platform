@@ -1,7 +1,7 @@
 import { useSettings } from "../../context/SettingsContext";
 import { SectionTitle } from "../ui/SectionTitle";
 import { Card } from "../ui/Card";
-import { Button } from "../ui/Button";
+import { Button } from "../ui";
 
 export function AboutSettings() {
   const { resetToDefaults } = useSettings();

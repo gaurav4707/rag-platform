@@ -5,6 +5,7 @@ import { ConfirmationDialog } from "../Common";
 import { SectionTitle } from "../ui/SectionTitle";
 import { EmptyState } from "../ui/EmptyState";
 import { ErrorState } from "../ui/ErrorState";
+import { useSettings } from "../../context/SettingsContext";
 
 interface DocumentListProps {
   documents: Document[];
@@ -25,10 +26,15 @@ export function DocumentList({
 }: DocumentListProps) {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [docToDelete, setDocToDelete] = useState<Document | null>(null);
+  const { settings } = useSettings();
 
   function handleDeleteClick(doc: Document) {
-    setDocToDelete(doc);
-    setDialogOpen(true);
+    if (settings.general.confirmBeforeDelete) {
+      setDocToDelete(doc);
+      setDialogOpen(true);
+    } else {
+      onDelete(doc.document_id, doc.filename);
+    }
   }
 
   function handleConfirmDelete() {
