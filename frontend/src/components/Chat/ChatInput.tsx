@@ -1,5 +1,6 @@
-import { useRef, useCallback } from "react";
+import { useRef, useCallback, useEffect } from "react";
 import { Button } from "../ui";
+import { useConversation } from "../../context/ConversationContext";
 
 interface ChatInputProps {
   onSend: (message: string) => void;
@@ -11,6 +12,20 @@ const LINE_HEIGHT = 24;
 
 export function ChatInput({ onSend, disabled = false }: ChatInputProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const { conversationVersion } = useConversation();
+  const prevVersionRef = useRef(conversationVersion);
+
+  useEffect(() => {
+    if (conversationVersion !== prevVersionRef.current) {
+      prevVersionRef.current = conversationVersion;
+      const el = textareaRef.current;
+      if (el) {
+        el.value = "";
+        el.style.height = "auto";
+        el.focus();
+      }
+    }
+  }, [conversationVersion]);
 
   const autoResize = useCallback(() => {
     const el = textareaRef.current;

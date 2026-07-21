@@ -1,14 +1,15 @@
 import { useEffect, useRef } from "react";
 import { Message } from "./Message";
 import { EmptyState } from "../ui/EmptyState";
-import type { Message as MessageType } from "../../types";
+import { ConversationHeader } from "./ConversationHeader";
+import { useConversation } from "../../context/ConversationContext";
 
 interface ChatWindowProps {
-  messages: MessageType[];
-  onRetry?: () => void;
+  onNewChat: () => void;
 }
 
-export function ChatWindow({ messages, onRetry }: ChatWindowProps) {
+export function ChatWindow({ onNewChat }: ChatWindowProps) {
+  const { messages, retry } = useConversation();
   const bottomRef = useRef<HTMLDivElement>(null);
   const streaming = messages.some(m => m.state === "streaming" || m.state === "pending");
 
@@ -47,6 +48,7 @@ export function ChatWindow({ messages, onRetry }: ChatWindowProps) {
         </div>
       ) : (
         <div className="mx-auto w-full max-w-3xl space-y-5 px-4 py-6 lg:px-6 lg:py-8" aria-live="polite" aria-atomic="false">
+          <ConversationHeader onNewChat={onNewChat} />
           {messages.map((msg) => (
             <Message
               key={msg.id}
@@ -54,7 +56,7 @@ export function ChatWindow({ messages, onRetry }: ChatWindowProps) {
               content={msg.content}
               state={msg.state}
               sources={msg.sources}
-              onRetry={msg.state === "interrupted" ? onRetry : undefined}
+              onRetry={msg.state === "interrupted" ? retry : undefined}
             />
           ))}
           <div ref={bottomRef} />

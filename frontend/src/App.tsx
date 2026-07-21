@@ -5,6 +5,7 @@ import { HomePage } from "./pages/HomePage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { ToastProvider, ToastContainer } from "./components/Common";
 import { SettingsProvider } from "./context/SettingsContext";
+import { ConversationProvider } from "./context/ConversationContext";
 
 type Page = "home" | "settings";
 
@@ -14,16 +15,18 @@ export function App() {
   return (
     <SettingsProvider>
       <ToastProvider>
-        <>
-          <MainLayout
-            sidebar={<Sidebar />}
-            onNavigate={setPage}
-            currentPage={page}
-          >
-            {page === "home" ? <HomePage /> : <SettingsPage />}
-          </MainLayout>
-          <ToastContainer />
-        </>
+        <ConversationProvider>
+          <>
+            <MainLayout
+              sidebar={<Sidebar />}
+              onNavigate={setPage}
+              currentPage={page}
+            >
+              {page === "home" ? <HomePage /> : <SettingsPage />}
+            </MainLayout>
+            <ToastContainer />
+          </>
+        </ConversationProvider>
       </ToastProvider>
     </SettingsProvider>
   );
