@@ -107,11 +107,25 @@ Fields
 
 ### Success Response (201)
 
+New document:
+
 ```json
 {
   "document_id": "uuid-string",
   "filename": "research.pdf",
-  "status": "indexed"
+  "status": "indexed",
+  "already_indexed": false
+}
+```
+
+Duplicate document (200):
+
+```json
+{
+  "document_id": "uuid-string",
+  "filename": "research.pdf",
+  "status": "already_indexed",
+  "already_indexed": true
 }
 ```
 
@@ -276,21 +290,43 @@ This endpoint is implemented and returns tokens via Server-Sent Events.
 
 ### Stream Events
 
-The backend streams tokens as they are generated.
+The backend streams Server-Sent Events in the following format:
 
-Example
+### Token Event (zero or more)
 
 ```text
-data: "Re"
+data: {"token": "Re"}
 
-data: "Act"
+data: {"token": "Act"}
 
-data: " is"
-
-data: "..."
+data: {"token": " is"}
 ```
 
-The frontend should progressively render tokens.
+### Done Event (exactly one, sent last)
+
+```text
+data: {"done": true, "sources": [...], "tool_calls": [...]}
+```
+
+The `sources` array follows the same format as the non-streaming `POST /chat` response.
+
+The `tool_calls` array contains metadata about each tool invocation:
+
+```json
+[
+  {
+    "tool_name": "retrieve_context",
+    "input": {"query": "What is RAG?"},
+    "output": "Retrieved 4 relevant chunks"
+  }
+]
+```
+
+The frontend should progressively render tokens to the UI, then finalize citations when the `done` event arrives.
+
+### Error Handling
+
+If the stream encounters an error, the connection is closed without a `done` event. The frontend should detect this via stream completion without a `done` event and show a fallback message.
 
 ---
 
@@ -432,17 +468,7 @@ Useful for debugging.
 
 ---
 
-## Settings
-
-```text
-GET /settings
-
-PUT /settings
-```
-
-Manage application configuration.
-
----
+*Note: Settings are intentionally frontend-only and managed via localStorage. No settings API is planned.*
 
 ## Debug
 

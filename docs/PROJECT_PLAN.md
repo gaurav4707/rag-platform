@@ -70,7 +70,7 @@ Implemented
 - **Offline Retrieval Evaluation Framework**
 - **Provider Abstraction Layer (backend/providers/)**
 
-In Progress
+Planned
 
 - Conversation memory with SQLite
 
@@ -84,15 +84,22 @@ Implemented
 - Chat interface
 - Streaming chat
 - Responsive layout
-- Source citation cards
+- Source citation cards (expand/collapse, clipboard, deduplication)
 - Document management
+- Settings (retrieval mode, top-K, reranking, temperature, theme)
+- Conversation management (reset with confirm, message count, summary header)
+- Conversation context provider
+- Settings persistence (localStorage)
+- Refined error handling (notifications, connection lost)
+- Upload polish (transition animations, cleanup)
+- Dead code and import cleanup
 
 Planned
 
-- Settings
-- Conversation history
+- Conversation history with persistence
 - Better accessibility
-- Theme customization
+- Keyboard shortcuts
+- Multi-turn conversation sidebar
 
 ---
 
@@ -269,17 +276,24 @@ Future Tools
 
 ---
 
-## Milestone 5 — User Experience 🚧 (ACTIVE)
+## Milestone 5 — User Experience ✅
 
-Deliverables
+Goal
 
-- Better loading states
-- Settings page
-- Theme support
-- Accessibility improvements
-- Keyboard shortcuts
-- Conversation management
-- Better citation visualization
+Polish the user experience with settings, conversation management, improved citations, and code cleanup.
+
+Completed
+
+- Settings infrastructure (SettingsContext, settingsService, localStorage persistence)
+- Settings UI panels (General: confirm-before-delete toggle, Retrieval: show-citations toggle, About: version + reset)
+- Conversation management (ConversationContext, reset with confirmation dialog)
+- Conversation summary header (message count, new chat button)
+- Citation experience (expand/collapse, clipboard actions, deduplication)
+- CitationViewModel for citation state management
+- Citation utility functions (citationUtils: deduplicate, group by document)
+- Streaming cleanup (scroll behavior, partial token edge case)
+- Polish pass (dead code removal, import cleanup, React.memo, UploadCard animations)
+- Frontend E2E tests for upload scenarios
 
 ---
 
@@ -287,33 +301,38 @@ Deliverables
 
 Goal
 
-Expand the agent beyond document retrieval.
+Expand the agent beyond document retrieval with new tools and infrastructure improvements.
 
-Possible additions
+### New Tools
+
+- summarize_document — LLM-based document summarization
+- search_by_metadata — Filter documents by metadata fields
+- web_search — External knowledge retrieval
+- calculator — Arithmetic tool
+
+### Agent Improvements
+
+- Reflection — Agent reviews its own outputs for quality
+- Planning — Agent decomposes complex queries into sub-tasks
+- Multi-step reasoning — Chain multiple tool calls coherently
+- Tool routing — Intelligent tool selection heuristics
 
 ### Retrieval
 
-- Parent Document Retrieval
-- Context Compression
-- Adaptive chunking
-- Multi-query retrieval
-
-### Agent
-
-- Reflection
-- Planning
-- Multi-step reasoning
-- Tool routing
-- Multiple simultaneous tools
+- Multi-query retrieval — Generate multiple query variations
+- Parent Document Retrieval — Retrieve chunks, return full document context
+- Context Compression — Condense retrieved chunks
+- Adaptive chunking — Dynamic chunk sizes based on content
 
 ### Infrastructure
 
 - Multiple embedding providers
 - Multiple LLM providers
-- OCR
-- Conversation memory
+- OCR for scanned PDFs
+- Conversation memory with persistence
 - Background indexing
-- Monitoring and tracing
+- Monitoring and tracing (LangFuse / LangSmith)
+- Responsive/mobile layout improvements
 
 ---
 
@@ -339,10 +358,12 @@ The MVP is complete when a user can
 1. Upload one or more PDF documents.
 2. Ask questions about uploaded documents.
 3. Receive streamed answers grounded in retrieved context.
-4. View source citations.
-5. Manage uploaded documents.
-6. Use the application entirely through the browser.
-7. Run the application locally with minimal setup.
+4. View source citations (expand/collapse, clipboard).
+5. Configure retrieval settings (mode, top-K, reranking, temperature).
+6. Manage uploaded documents (list, delete).
+7. Reset conversation with confirmation.
+8. Use the application entirely through the browser.
+9. Run the application locally with minimal setup.
 
 ---
 

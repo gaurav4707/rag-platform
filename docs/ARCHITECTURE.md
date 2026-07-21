@@ -181,6 +181,22 @@ project/
 │   └── performance.py
 │
 ├── frontend/
+│   ├── src/
+│   │   ├── context/
+│   │   │   ├── SettingsContext.tsx
+│   │   │   └── ConversationContext.tsx
+│   │   ├── services/
+│   │   │   ├── api.ts
+│   │   │   ├── chatApi.ts
+│   │   │   ├── documentApi.ts
+│   │   │   ├── settingsService.ts
+│   │   │   ├── notifications.ts
+│   │   │   └── errorMapper.ts
+│   │   ├── utils/
+│   │   │   └── citationUtils.ts
+│   │   └── components/
+│   │       ├── Chat/ (ChatWindow, ChatInput, Message, CitationCard, ConversationHeader)
+│   │       └── Settings/ (GeneralSettings, RetrievalSettings, AboutSettings)
 
 ├── docs/
 
@@ -200,9 +216,30 @@ Responsible for:
 - File upload
 - Chat interface
 - Rendering streamed responses
-- Showing citations
+- Showing citations (expand/collapse, clipboard)
+- Settings management (retrieval config, theme)
+- Conversation state management (message tracking, reset with confirmation)
 
 The frontend must never contain RAG logic.
+
+### Frontend Architecture
+
+```
+React App
+    │
+    ├── SettingsContext ─── settingsService (localStorage)
+    │
+    ├── ConversationContext (message state, reset)
+    │
+    ├── API Services (chatApi, documentApi)
+    │
+    └── UI Components
+        ├── ChatWindow / ChatInput (streaming)
+        ├── Message (renders tokens + citations)
+        ├── CitationCard (expand/collapse, clipboard)
+        ├── ConversationHeader (message count, new chat)
+        └── Settings panels (General, Retrieval, About)
+```
 
 ---
 
@@ -309,8 +346,14 @@ BM25 Index (rebuilt in-memory)
 
 ```
 User Question
-
-↓
+    │
+    ├── SettingsContext → RetrievalConfig (retrieval mode, top-K, reranking, temperature)
+    │
+    ├── ConversationContext → Message history, streaming state
+    │
+    └── chatApi → SSE stream
+    │
+    ↓
 
 Chat API
 
@@ -755,6 +798,41 @@ Responsible for standardized API errors.
 
 ---
 
+## Frontend Contexts
+
+### SettingsContext.tsx
+
+Manages frontend-only UI preferences persisted to localStorage via `settingsService.ts`:
+
+- `general.confirmBeforeDelete` — Toggle confirmation dialog before document deletion
+- `retrieval.showCitations` — Toggle citation card visibility in responses
+
+Settings are strictly frontend-only — they are never sent to the API. Dark mode follows OS preference via Tailwind's `dark:` media query variant (no toggle).
+
+The SettingsContext uses `useState` + `useCallback` for re-render efficiency and `localStorage` for persistence across sessions. The `settingsService.ts` module handles serialization/deserialization with a clear default and reset pattern.
+
+### ConversationContext.tsx
+
+Manages chat message state:
+
+- Message list
+- Add message (incremental streaming)
+- Reset conversation (with confirmation dialog)
+- Message count display via ConversationHeader
+
+Uses `useRef` for stable callback identity across re-renders.
+
+### citationUtils.ts
+
+Pure utility functions for citation deduplication and grouping:
+
+- `deduplicateCitations()` — Removes duplicate source citations by document ID
+- `groupCitationsByDocument()` — Groups citations by source document for structured display
+
+These are consumed by the CitationCard and Message components.
+
+---
+
 ## RetrievalResult
 
 The RetrievalResult is a shared data model produced by the retriever.
@@ -959,7 +1037,12 @@ Saved to `backend/evaluation/reports/evaluation_<timestamp>.json`:
 
 The following rules should not be violated without recording an architectural decision:
 
-- The frontend must never contain backend logic.
+- The frontend must never contain RAG or backend logic.
+- Frontend reads settings from localStorage via settingsService (no settings API).
+- Conversation state is managed via React Context (ConversationContext), not a backend endpoint.
+- Components use `useRef` for stable callback references during streaming.
+- CitationCards support expand/collapse — no loading state needed since citations arrive with the done event.
+- Citation deduplication is a pure utility (citationUtils), not a component concern.
 - API endpoints must remain thin.
 - Business logic belongs in services.
 - Agent orchestration belongs inside the RAG layer.

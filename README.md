@@ -38,8 +38,10 @@ Frontend → API → Services → Agent → Tool Registry → Tools → Retrieve
   - `list_documents` — List all indexed documents
   - `search_by_filename` — Find documents by filename
 - **Streaming Responses** — Real-time token streaming with tool event metadata
-- **Source Citations** — Grounded answers with document, page, and score
+- **Source Citations** — Expand/collapse citations with clipboard actions, deduplication
 - **Document Management** — List, delete, duplicate detection
+- **Settings** — Confirm-before-delete, show citations toggle, localStorage persistence, about panel
+- **Conversation Management** — Context-based reset with confirmation, message count, summary header
 - **Retrieval Evaluation** — CLI-based offline benchmarking (Precision@K, Recall@K, MRR, NDCG, MAP, F1)
 
 ---
@@ -52,7 +54,7 @@ Frontend → API → Services → Agent → Tool Registry → Tools → Retrieve
 | 2. Frontend Foundation | ✅ Complete |
 | 3. Retrieval Intelligence | ✅ Complete |
 | 4. Agent Foundations | ✅ Complete |
-| 5. User Experience | 🚧 Active |
+| 5. User Experience | ✅ Complete |
 | 6. Advanced Agentic RAG | ⏳ Planned |
 
 ---
@@ -159,6 +161,10 @@ python -m backend.evaluation.cli \
 │   ├── evaluation/      # Offline benchmarking
 │   └── tests/           # Test suite (209+ tests)
 ├── frontend/            # React + TypeScript
+│   ├── src/context/     # React context providers (Settings, Conversation)
+│   ├── src/services/    # API clients, settings persistence, notifications
+│   ├── src/utils/       # Shared utilities (citationUtils)
+│   └── src/components/  # UI components (Chat, Settings, ui, Shell)
 ├── docs/                # Architecture documentation
 └── storage/             # PDF + ChromaDB persistence
 ```
@@ -174,6 +180,7 @@ python -m backend.evaluation.cli \
 | `docs/PROJECT_PLAN.md` | Milestone roadmap and status |
 | `docs/API_SPEC.md` | Public API contract |
 | `docs/DECISIONS.md` | Architecture Decision Records |
+| `docs/CHANGELOG.md` | Version history and milestones |
 | `AGENTS.md` | AI coding agent profiles and rules |
 
 ---

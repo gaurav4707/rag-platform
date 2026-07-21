@@ -16,12 +16,12 @@ It should always remain synchronized with the codebase.
 
 **Current Phase**
 
-Milestone 3 — Retrieval Intelligence (Complete)
+Milestone 6 — Advanced Agentic RAG ⏳
 
 **Overall Progress**
 
 ```text
-████████████████████ 100%
+████████████████████ 83%
 ```
 
 ---
@@ -34,7 +34,7 @@ Milestone 3 — Retrieval Intelligence (Complete)
 | 2. Frontend Foundation | ✅ Completed |
 | 3. Retrieval Intelligence | ✅ Completed |
 | 4. Agent Foundations | ✅ Completed |
-| 5. User Experience | ⏳ Planned |
+| 5. User Experience | ✅ Completed |
 | 6. Advanced Agentic RAG | ⏳ Planned |
 
 ---
@@ -212,27 +212,40 @@ Transform the current RAG pipeline into a robust Agentic RAG architecture.
 
 ---
 
-# Milestone 5 — User Experience
+# Milestone 5 — User Experience ✅
+
+## Goal
+
+Polish the user experience with settings, conversation management, improved citations, and code cleanup.
 
 ### UI
 
-- [ ] Theme support
-- [ ] Settings page
-- [ ] Conversation management
-- [ ] Better loading states
-- [ ] Richer citation cards
+- [x] Settings infrastructure (SettingsContext + settingsService + localStorage)
+- [x] Settings panels (General, Retrieval, About)
+- [x] Conversation management (ConversationContext, reset with confirmation)
+- [x] Conversation summary header (message count, new chat button)
+- [x] Richer citation cards (expand/collapse, clipboard copy, deduplication)
+- [x] CitationViewModel for per-message citation UI state
+- [x] citationUtils for deduplication and grouping
+- [x] Streamlined streaming (scroll behavior, partial token handling)
+- [x] UploadCard animations (drag states, progress, error transition)
+- [x] Dark mode support via Tailwind `dark:` variant (OS preference)
+- [x] Toast notification improvements (retry on connection lost)
 
-### Accessibility
+### Code Quality
 
-- [ ] Accessibility audit
-- [ ] Keyboard improvements
-- [ ] Screen reader improvements
+- [x] Dead code removal (empty hooks directory, unused imports)
+- [x] Import cleanup across all components
+- [x] React.memo usage for render optimization
+- [x] ChatWindow optimization (useCallback, useMemo)
+- [x] Copy handler pattern extraction to shared utils
 
-### Quality
+### Accessibility (dark mode only, partial)
 
-- [ ] Error recovery
-- [ ] Retry support
-- [ ] Better notifications
+- [x] Tailwind dark mode classes present (OS-level)
+- [ ] Full accessibility audit (deferred)
+- [ ] Keyboard navigation improvements (deferred)
+- [ ] Screen reader testing (deferred)
 
 ---
 
@@ -284,14 +297,14 @@ Future ideas intentionally postponed.
 
 # Current Sprint (Priority Order)
 
-Current focus (highest priority first) — Milestone 5: User Experience:
+Current focus (highest priority first) — Milestone 6: Advanced Agentic RAG:
 
-1. **Better loading states** — Skeleton loaders, progress indicators
-2. **Settings page** — Configure retrieval parameters, theme
-3. **Theme support** — Dark mode, light mode
-4. **Accessibility improvements** — Screen reader support, keyboard navigation audit
-5. **Conversation management** — Persist and display chat sessions
-6. **Better citation visualization** — Inline citations, richer source cards
+1. **New tools** — summarize_document, search_by_metadata, web_search, calculator
+2. **Multiple LLM providers** — Support OpenAI, Anthropic alongside Groq
+3. **Multiple embedding providers** — Support OpenAI, Cohere alongside HuggingFace
+4. **Conversation memory** — Persistent chat history via SQLite
+5. **Agent improvements** — Reflection, planning, tool routing
+6. **Document improvements** — OCR, background indexing, multi-format support
 
 ---
 

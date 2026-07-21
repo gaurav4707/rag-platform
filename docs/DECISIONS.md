@@ -1830,5 +1830,328 @@ Limit by estimated token consumption. More precise but complex and model-depende
 
 ---
 
+# ADR-025
+
+## Title
+
+Frontend-Only Settings via React Context + localStorage
+
+**Status**
+
+Accepted
+
+### Context
+
+The MVP needed user-configurable preferences (confirm-before-delete, show-citations toggle) without introducing a settings API or database. Settings are per-browser UI preferences, not backend configuration.
+
+### Decision
+
+Store settings in localStorage via a `settingsService.ts` wrapper, served to components via `SettingsContext` (React Context + `useState` + `useCallback`):
+
+- `settingsService.ts` handles serialization, deserialization, defaults, and reset
+- `SettingsContext` provides `settings`, `updateSettings()`, `resetToDefaults()`
+- Defaults are defined in the service, not duplicated across consumers
+
+Settings are intentionally **not** sent to the API. They affect only frontend behavior:
+- `confirmBeforeDelete` → shows confirmation dialog before document deletion
+- `showCitations` → toggles citation card visibility
+
+### Alternatives Considered
+
+#### Settings API Endpoint
+Too heavy for UI-only preferences. Adds backend complexity for data the frontend manages exclusively.
+
+#### Zustand / Redux
+Overkill for two boolean toggles. React Context + useState is sufficient and avoids additional dependencies.
+
+#### URL Parameters
+Impractical for persistent preferences across sessions.
+
+### Consequences
+
+**Advantages:**
+- Zero backend changes for settings
+- Survives page refreshes (localStorage)
+- Simple, testable service layer
+- Easy to extend with new settings
+
+**Trade-offs:**
+- Settings are per-browser (lost on cache clear)
+- No server-side configuration
+- Cannot share settings across devices
+
+### Revisit When
+
+Settings need to affect backend behavior (e.g., retrieval config sent with chat requests).
+
+---
+
+# ADR-026
+
+## Title
+
+ConversationContext for Frontend-Only Conversation State
+
+**Status**
+
+Accepted
+
+### Context
+
+The chat interface needs to track message state (user messages, AI responses, streaming status) and support reset. The backend has no conversation history endpoint — each request is stateless.
+
+### Decision
+
+Manage conversation state via `ConversationContext` (React Context):
+
+- Stores `messages: Message[]` — ordered list of chat messages
+- Provides `addMessage()`, `resetConversation()` (with confirmation dialog)
+- Uses `useRef` for stable callback identity during streaming
+- Reset triggers a `confirm()` dialog before clearing state
+
+The context is consumed by `ChatWindow`, `ChatInput`, `ConversationHeader` and `Message` components.
+
+### Alternatives Considered
+
+#### Backend Conversation History API
+Post-MVP feature. Current stateless design is simpler and sufficient.
+
+#### URL State
+Impractical for multi-message conversations.
+
+#### Zustand / Redux
+Not warranted for a single array of messages with two operations.
+
+### Consequences
+
+**Advantages:**
+- Simple, React-native state management
+- No backend changes needed
+- Confirmation dialog prevents accidental data loss
+
+**Trade-offs:**
+- State lost on page refresh (no persistence)
+- No conversation history across sessions
+
+### Revisit When
+
+Conversation persistence (SQLite backend) is implemented as a planned feature.
+
+---
+
+# ADR-027
+
+## Title
+
+citationUtils — Pure Functions for Citation Display
+
+**Status**
+
+Accepted
+
+### Context
+
+Citation cards displayed source documents for each AI response. Multiple citations from the same document appeared as separate cards, and the UI needed deduplication and grouping without coupling display logic to component internals.
+
+### Decision
+
+Extract citation display logic into `citationUtils.ts` as pure functions:
+
+- `deduplicateCitations(sources)` — Removes duplicate citations by `document_id`, preserving the highest-score entry
+- `groupCitationsByDocument(sources)` — Groups deduplicated citations by source document for structured display
+
+These are consumed by `citationUtils` module and `CitationCard` / `Message` components. No component imports the service layer directly for citation formatting.
+
+### Alternatives Considered
+
+#### Deduplication in Component
+Duplicates logic across components. Harder to test.
+
+#### Deduplication in CitationCard
+Wrong layer — card should receive ready-to-render data.
+
+### Consequences
+
+**Advantages:**
+- Testable pure functions
+- Reusable across components
+- Single place for citation formatting logic
+
+**Trade-offs:**
+- Additional file (`citationUtils.ts`)
+
+### Revisit When
+
+Citation display needs server-side grouping or more complex transformation.
+
+---
+
+# ADR-028
+
+## Title
+
+CitationViewModel — Component-Level Citation State
+
+**Status**
+
+Accepted
+
+### Context
+
+Each citation card needs local UI state (expanded/collapsed, clipboard copy feedback) independent of the citation data model. Tracking this in a separate state variable per card was verbose and error-prone.
+
+### Decision
+
+Introduce a per-card `CitationViewModel` pattern in the `Message` component:
+
+```typescript
+interface CitationViewModel {
+  open: Record<string, boolean>;   // citation_id → expanded state
+  copyState: Record<string, "idle" | "copied">; // citation_id → copy feedback
+}
+```
+
+Each citation card reads its `open` and `copyState` from the view model. The `Message` component owns the view model and passes derived values to each `CitationCard`.
+
+### Alternatives Considered
+
+#### State Inside CitationCard
+Each card manages its own expanded/copy state. Pros: encapsulated. Cons: parent cannot programmatically collapse all; state resets on re-render.
+
+#### Global State (Context)
+Over-engineered for local UI state that only affects one message's citations.
+
+### Consequences
+
+**Advantages:**
+- Clean separation of UI state from data
+- Parent can control all citation cards
+- Clipboard feedback is local and resets after timeout
+- No global state pollution
+
+**Trade-offs:**
+- View model must be maintained alongside data model
+- Slightly more code than inline state
+
+### Revisit When
+
+Citation state becomes complex enough to warrant a dedicated store or hook.
+
+---
+
+# ADR-029
+
+## Title
+
+SSE Event Format: Token Events + Done Event
+
+**Status**
+
+Accepted
+
+### Context
+
+The streaming chat endpoint needed a format that supported progressive token rendering and final metadata delivery (sources, tool calls). The initial implementation used raw token strings as SSE data, which couldn't distinguish token events from terminal events.
+
+### Decision
+
+Use a structured JSON format for all SSE events:
+
+**Token Events** (zero or more):
+```json
+{"token": "Re"}
+```
+
+**Done Event** (exactly one, sent last):
+```json
+{"done": true, "sources": [...], "tool_calls": [...]}
+```
+
+The frontend parses each `data:` line:
+- If `parsed.token` is a string → append to displayed answer
+- If `parsed.done === true` → finalize with sources and tool calls
+
+### Alternatives Considered
+
+#### Raw Token Strings
+```text
+data: Re
+```
+Pros: Simpler parsing. Cons: Cannot distinguish tokens from terminal metadata; stream ends without structured completion.
+
+#### Chunked JSON array
+Yield a single JSON array of all tokens after generation. Pros: Atomic. Cons: No progressive rendering; higher time-to-first-token.
+
+#### Multiple event types (event: token / event: done)
+SSE `event` field. Pros: Semantic. Cons: More complex frontend parsing; some SSE clients handle event differently.
+
+### Consequences
+
+**Advantages:**
+- Progressive rendering (TTFT ~ first token)
+- Structured completion metadata
+- Single field check (`parsed.token` vs `parsed.done`) for routing
+- Compatible with standard EventSource parsing
+
+**Trade-offs:**
+- Slightly more bytes per token (JSON overhead)
+- Frontend must buffer incomplete lines
+
+### Revisit When
+
+Multiple event types (tool_call_start, tool_call_end, error) need distinct frontend handlers.
+
+---
+
+# ADR-030
+
+## Title
+
+No Settings API — Settings Are Frontend-Only
+
+**Status**
+
+Accepted
+
+### Context
+
+Milestone 5 planned a settings page. Settings could be stored on the backend (via API) or on the frontend (localStorage). The MVP settings are UI-only preferences that affect only frontend behavior.
+
+### Decision
+
+Settings are strictly frontend-only. No backend settings API is implemented.
+
+Settings managed via localStorage + SettingsContext:
+- `confirmBeforeDelete` — UI behavior preference
+- `showCitations` — display preference
+
+If future settings need to affect backend behavior (retrieval mode, top-K, temperature), those should be sent as query parameters or request body fields on the chat endpoint rather than via a separate settings API.
+
+### Alternatives Considered
+
+#### Full Settings API (GET/PUT /settings)
+Adds backend CRUD complexity for data that only the frontend consumes. Over-engineered for two boolean toggles.
+
+#### Settings as Chat Request Fields
+Send `message + settings` to `/chat/stream`. Appropriate when settings affect retrieval/LLM behavior, but current settings are UI-only.
+
+### Consequences
+
+**Advantages:**
+- Zero backend changes
+- Simple persistence
+- Fast iteration (no API versioning)
+
+**Trade-offs:**
+- Settings are per-browser, not per-user
+- No server-side defaults
+- Cannot extend to backend-affecting settings without API changes
+
+### Revisit When
+
+Settings need to affect retrieval or LLM behavior (e.g., retrieval mode, top-K, temperature).
+
+---
+
 # Decision Guidelines
 
