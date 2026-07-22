@@ -404,3 +404,42 @@ class TestAdaptiveChunkingStrategy:
         result = strategy.split([doc])
         for chunk in result.chunks:
             assert len(chunk.page_content) <= 120
+
+
+from backend.rag.chunking import ChunkingPipeline
+
+
+class TestChunkingPipeline:
+    def test_primary_success(self):
+        primary = FixedChunkingStrategy(chunk_size=200, chunk_overlap=20)
+        fallback = FixedChunkingStrategy(chunk_size=500, chunk_overlap=50)
+        pipeline = ChunkingPipeline(primary=primary, fallback=fallback)
+        docs = [Document(page_content="Hello world. " * 50, metadata={"page": 0})]
+        result = pipeline.execute(docs)
+        assert result.success is True
+        assert result.metrics.fallback_used is False
+        assert result.metrics.strategy == "fixed"
+
+    def test_primary_failure_uses_fallback(self):
+        primary = AdaptiveChunkingStrategy(min_chunk_size=50, max_chunk_size=500)
+        fallback = FixedChunkingStrategy(chunk_size=500, chunk_overlap=50)
+        pipeline = ChunkingPipeline(primary=primary, fallback=fallback)
+        docs = [Document(page_content="Hello", metadata={"page": 0})]
+        result = pipeline.execute(docs)
+        assert result.success is True
+        assert result.metrics.fallback_used is True
+
+    def test_no_fallback_returns_primary_failure(self):
+        primary = AdaptiveChunkingStrategy(min_chunk_size=50, max_chunk_size=500)
+        pipeline = ChunkingPipeline(primary=primary, fallback=None)
+        docs = [Document(page_content="Hello", metadata={"page": 0})]
+        result = pipeline.execute(docs)
+        assert result.success is False
+
+    def test_metrics_propagation(self):
+        primary = FixedChunkingStrategy(chunk_size=200, chunk_overlap=20)
+        pipeline = ChunkingPipeline(primary=primary)
+        docs = [Document(page_content="Test content. " * 20, metadata={"page": 0})]
+        result = pipeline.execute(docs)
+        assert result.metrics.chunk_count > 0
+        assert result.metrics.duration_ms > 0

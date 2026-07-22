@@ -341,3 +341,33 @@ class AdaptiveChunkingStrategy:
                 duration_ms=duration_ms,
             ),
         )
+
+
+class ChunkingPipeline:
+    """Orchestrates primary + fallback chunking strategies.
+
+    Tries the primary strategy first. If it reports success=False
+    and a fallback is provided, executes the fallback.
+    """
+
+    def __init__(
+        self,
+        primary: BaseChunkingStrategy,
+        fallback: BaseChunkingStrategy | None = None,
+    ):
+        self._primary = primary
+        self._fallback = fallback
+
+    def execute(self, documents: Sequence[Document]) -> ChunkingResult:
+        result = self._primary.split(documents)
+
+        if result.success:
+            return result
+
+        # Primary failed — try fallback
+        if self._fallback is not None:
+            fallback_result = self._fallback.split(documents)
+            fallback_result.metrics.fallback_used = True
+            return fallback_result
+
+        return result
