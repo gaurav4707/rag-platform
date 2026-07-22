@@ -134,3 +134,86 @@ class TestBoundary:
         boundaries = sorted([b1, b2], key=lambda b: b.position)
         assert boundaries[0].position == 10
         assert boundaries[1].position == 20
+
+
+from backend.rag.chunking import (
+    HeadingRule, NumberedSectionRule, ParagraphRule,
+    ListRule, SentenceRule,
+)
+
+
+class TestHeadingRule:
+    def test_markdown_heading(self):
+        rule = HeadingRule()
+        doc = Document(page_content="# Introduction\nSome text here.", metadata={})
+        boundaries = rule.detect(doc)
+        assert len(boundaries) >= 1
+        assert any(b.label == "heading" for b in boundaries)
+        assert boundaries[0].position == 0  # heading at start
+
+    def test_standalone_caps(self):
+        rule = HeadingRule()
+        doc = Document(page_content="INSTALLATION\nFollow these steps.", metadata={})
+        boundaries = rule.detect(doc)
+        assert any(b.label == "heading" for b in boundaries)
+
+    def test_no_heading(self):
+        rule = HeadingRule()
+        doc = Document(page_content="Just regular text without any headings.", metadata={})
+        boundaries = rule.detect(doc)
+        assert len(boundaries) == 0
+
+
+class TestParagraphRule:
+    def test_double_newline(self):
+        rule = ParagraphRule()
+        doc = Document(page_content="First paragraph.\n\nSecond paragraph.", metadata={})
+        boundaries = rule.detect(doc)
+        assert len(boundaries) >= 1
+        assert boundaries[0].label == "paragraph"
+        assert boundaries[0].position == 16  # after "First paragraph."
+
+    def test_no_paragraphs(self):
+        rule = ParagraphRule()
+        doc = Document(page_content="Single paragraph text.", metadata={})
+        boundaries = rule.detect(doc)
+        assert len(boundaries) == 0
+
+
+class TestListRule:
+    def test_bullet_list(self):
+        rule = ListRule()
+        doc = Document(page_content="- Item one\n- Item two\n- Item three", metadata={})
+        boundaries = rule.detect(doc)
+        assert len(boundaries) == 3
+        assert all(b.label == "list" for b in boundaries)
+
+    def test_no_list(self):
+        rule = ListRule()
+        doc = Document(page_content="No lists here.", metadata={})
+        boundaries = rule.detect(doc)
+        assert len(boundaries) == 0
+
+
+class TestSentenceRule:
+    def test_sentence_boundaries(self):
+        rule = SentenceRule()
+        doc = Document(page_content="First sentence. Second sentence. Third sentence.", metadata={})
+        boundaries = rule.detect(doc)
+        assert len(boundaries) >= 2
+        assert all(b.label == "sentence" for b in boundaries)
+
+    def test_no_sentences(self):
+        rule = SentenceRule()
+        doc = Document(page_content="One sentence only", metadata={})
+        boundaries = rule.detect(doc)
+        assert len(boundaries) == 0
+
+
+class TestNumberedSectionRule:
+    def test_numbered_sections(self):
+        rule = NumberedSectionRule()
+        doc = Document(page_content="1. First section\n2. Second section\n3. Third section", metadata={})
+        boundaries = rule.detect(doc)
+        assert len(boundaries) == 3
+        assert all(b.label == "numbered_section" for b in boundaries)
