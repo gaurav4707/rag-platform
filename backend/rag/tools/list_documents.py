@@ -14,8 +14,7 @@ from backend.services.document_service import list_indexed_documents
 logger = logging.getLogger(__name__)
 
 
-@tool(response_format="content_and_artifact")
-def list_documents() -> tuple[str, list[dict[str, Any]]]:
+def _list_documents() -> tuple[str, list[dict[str, Any]]]:
     """List all indexed documents.
 
     Returns a list of documents with their IDs, filenames, and status.
@@ -34,3 +33,6 @@ def list_documents() -> tuple[str, list[dict[str, Any]]]:
     logger.debug("Listed %d documents", len(documents))
 
     return serialized, documents
+
+
+list_documents: Any = tool(response_format="content_and_artifact")(_list_documents)

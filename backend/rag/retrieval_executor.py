@@ -73,11 +73,13 @@ class RetrievalExecutor:
                 index = future_to_index[future]
                 try:
                     results[index] = future.result()
+                    chunk_count = results[index]
+                    assert chunk_count is not None
                     logger.debug(
                         "Parallel retrieval completed for query %d/%d: %d chunks",
                         index + 1,
                         len(queries),
-                        len(results[index]),
+                        len(chunk_count),
                     )
                 except Exception as e:
                     logger.warning("Parallel retrieval failed for query %d: %s", index, e)

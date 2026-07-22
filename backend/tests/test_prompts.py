@@ -122,7 +122,6 @@ class TestPromptBuilderHelpers:
         """Missing metadata fields show 'unknown'."""
         chunk = RetrievedChunk(
             document=Document(page_content="Test", metadata={}),
-            score=None,
         )
 
         result = _format_chunk_metadata(chunk, 1)

@@ -1,6 +1,7 @@
 import sys
 import types
 from pathlib import Path
+from typing import Any, cast
 
 import pytest
 from langchain_chroma import Chroma
@@ -21,13 +22,13 @@ class _MockEmbeddings:
 
 # Mock the providers module for tests
 _mock_embeddings_mod = types.ModuleType("backend.providers.embeddings")
-_mock_embeddings_mod.get_embedding_provider = lambda: _MockEmbeddings()
+setattr(_mock_embeddings_mod, "get_embedding_provider", lambda: _MockEmbeddings())
 sys.modules["backend.providers.embeddings"] = _mock_embeddings_mod
 
 # Also mock the providers __init__ to export get_embedding_provider
 _mock_providers_mod = types.ModuleType("backend.providers")
-_mock_providers_mod.get_embedding_provider = _mock_embeddings_mod.get_embedding_provider
-_mock_providers_mod.get_llm = lambda: None  # Will be patched per test
+setattr(_mock_providers_mod, "get_embedding_provider", _mock_embeddings_mod.get_embedding_provider)
+setattr(_mock_providers_mod, "get_llm", lambda: None)  # Will be patched per test
 sys.modules["backend.providers"] = _mock_providers_mod
 
 
@@ -52,7 +53,7 @@ def temp_chroma(tmp_path):
 
     collection = Chroma(
         collection_name="test_collection",
-        embedding_function=_DummyEmbeddings(),
+        embedding_function=cast(Any, _DummyEmbeddings()),
         persist_directory=str(db_dir),
     )
 

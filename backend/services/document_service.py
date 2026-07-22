@@ -1,6 +1,8 @@
 import hashlib
 import uuid
 
+from fastapi import status
+
 from backend.config import PARENT_STORAGE_DIR, UPLOAD_DIR
 from backend.rag.loader import load_pdf
 from backend.rag.splitter import HierarchicalSplitter
@@ -13,7 +15,7 @@ from backend.rag.vector_store import (
     get_all_documents,
 )
 from backend.rag.bm25 import rebuild as rebuild_bm25_index, refresh as refresh_bm25_index, invalidate as invalidate_bm25_index
-from backend.api.errors import AppError, ERROR_CODES, status
+from backend.api.errors import AppError, ERROR_CODES
 
 _parent_store = FileParentStore(PARENT_STORAGE_DIR)
 

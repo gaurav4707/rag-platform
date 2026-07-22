@@ -172,10 +172,11 @@ def _execute_tool_direct(tool_map: dict, tool_name: str, tool_input: dict) -> To
         result = tool.invoke(tool_call)
 
         if isinstance(result, ToolMessage):
-            content = result.content
+            content = result.content if isinstance(result.content, str) else str(result.content)
             artifact = result.artifact
         elif isinstance(result, tuple) and len(result) == 2:
-            content, artifact = result
+            content = result[0] if isinstance(result[0], str) else str(result[0])
+            artifact = result[1]
         else:
             content = str(result)
             artifact = result

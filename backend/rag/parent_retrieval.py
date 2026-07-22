@@ -33,9 +33,11 @@ def _extract_parent_ref(metadata: dict) -> dict | None:
     }
 
 
-def _best_score(existing: float | None, candidate: float) -> float:
+def _best_score(existing: float | None, candidate: float | None) -> float | None:
     if existing is None:
         return candidate
+    if candidate is None:
+        return existing
     return max(existing, candidate)
 
 
@@ -46,7 +48,7 @@ def resolve_parents(
     if not child_chunks:
         return []
 
-    seen_parents: OrderedDict[str, tuple[ParentBlock, float]] = OrderedDict()
+    seen_parents: OrderedDict[str, tuple[ParentBlock, float | None]] = OrderedDict()
     provenance: dict[str, dict] = {}
 
     for chunk in child_chunks:

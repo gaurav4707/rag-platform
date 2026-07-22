@@ -124,7 +124,7 @@ class TestRetrievalConfig:
     def test_config_is_frozen(self):
         config = RetrievalConfig()
         with pytest.raises((AttributeError, TypeError)):
-            config.top_k = 99
+            setattr(config, "top_k", 99)
 
     def test_valid_search_types(self):
         RetrievalConfig(search_type="similarity")
@@ -361,6 +361,7 @@ class TestRetrieveContext:
         assert len(artifact.chunks) == 1
         assert artifact.chunks[0].document.page_content == "test"
         # With hybrid retrieval + RRF, score is 1/(RRF_K + rank + 1) = 1/61
+        assert artifact.chunks[0].score is not None
         assert abs(artifact.chunks[0].score - 1/61) < 0.001
         assert isinstance(artifact.chunks[0], RetrievedChunk)
 
@@ -517,7 +518,7 @@ class TestQueryRewriting:
         )
         with patch("backend.rag.retrieval_strategies.similarity_search_with_scores_filtered") as mock_search:
             with patch("backend.rag.bm25.search", return_value=[]) as mock_bm25:
-                with patch("backend.rag.retriever.get_query_rewriter", return_value=mock_rewriter):
+                with patch("backend.rag.retrieval_pipeline.get_query_rewriter", return_value=mock_rewriter):
                     mock_search.return_value = [(mock_doc, 0.5)]
                     serialized, artifact = retrieve_context.func("original query", config=config)
 
@@ -541,7 +542,7 @@ class TestQueryRewriting:
         mock_rewriter.rewrite.side_effect = Exception("LLM failed")
         with patch("backend.rag.retrieval_strategies.similarity_search_with_scores_filtered") as mock_search:
             with patch("backend.rag.bm25.search", return_value=[]) as mock_bm25:
-                with patch("backend.rag.retriever.get_query_rewriter", return_value=mock_rewriter):
+                with patch("backend.rag.retrieval_pipeline.get_query_rewriter", return_value=mock_rewriter):
                     mock_search.return_value = [(mock_doc, 0.5)]
                     serialized, artifact = retrieve_context.func("original query", config=config)
 
@@ -572,7 +573,7 @@ class TestQueryRewriting:
         )
         with patch("backend.rag.retrieval_strategies.mmr_search_with_scores") as mock_mmr:
             with patch("backend.rag.bm25.search", return_value=[]) as mock_bm25:
-                with patch("backend.rag.retriever.get_query_rewriter", return_value=mock_rewriter):
+                with patch("backend.rag.retrieval_pipeline.get_query_rewriter", return_value=mock_rewriter):
                     mock_mmr.return_value = mock_docs
                     serialized, artifact = retrieve_context.func("original query", config=config)
 

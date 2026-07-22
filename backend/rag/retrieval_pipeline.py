@@ -1,34 +1,41 @@
 """Retrieval Pipeline - Composable multi-stage retrieval orchestration.
 
 This module implements the Retrieval Pipeline, a composable orchestration layer
-that coordinates query processing, retrieval, merging, and reranking stages.
+that coordinates query processing, retrieval, merging, parent retrieval,
+reranking, context compression, and result building stages.
 
 Architecture:
     User Query
         │
         ▼
-    ┌─────────────────────────────────────────┐
-    │           RETRIEVAL PIPELINE            │
-    │                                         │
-    │  Stage 1: RewriteStage    (optional)    │
-    │  Stage 2: ExpansionStage  (optional)    │
-    │  Stage 3: RetrievalStage                │
-    │  Stage 4: MergeStage                    │
-    │  Stage 5: RerankStage      (optional)   │
-    │  Stage 6: ResultBuilderStage            │
-    │                                         │
-    │  Future stages insertable without       │
-    │  modifying existing stages.             │
-    └─────────────────────────────────────────┘
+    ┌──────────────────────────────────────────────────┐
+    │                RETRIEVAL PIPELINE                │
+    │                                                  │
+    │  Stage 1: RewriteStage              (optional)   │
+    │  Stage 2: ExpansionStage            (optional)   │
+    │  Stage 3: RetrievalStage                         │
+    │  Stage 4: MergeStage                             │
+    │  Stage 5: ParentRetrievalStage      (optional)   │
+    │  Stage 6: RerankStage               (optional)   │
+    │  Stage 7: ContextCompressionStage   (optional)   │
+    │  Stage 8: ResultBuilderStage                     │
+    │                                                  │
+    │  Each stage returns StageResult {chunks, trace}  │
+    └──────────────────────────────────────────────────┘
         │
         ▼
-RetrievalResult (single, unified)
+  RetrievalResult (single, unified)
+
+Stage semantics:
+    - Each stage receives PipelineContext (read for query/config state)
+    - Each stage returns StageResult (new chunks + trace) — immutable pattern
+    - Stages update non-chunk context state directly (rewritten_query, expanded_queries)
+    - Pipeline owns updating working_chunks from StageResult
 """
 
 from __future__ import annotations
 
 import logging
-import time
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
@@ -41,6 +48,7 @@ from backend.rag.retrieval_strategies import RetrievalStrategy, get_strategy
 from backend.rag.reranker import BaseReranker, get_reranker
 from backend.rag.retrieval_executor import RetrievalExecutor
 from backend.rag.parent_retrieval import resolve_parents, get_parent_retrieval_metadata
+from backend.rag.context_compression import BaseContextCompressor, get_context_compressor
 from backend.storage.parent_store import BaseParentStore, FileParentStore
 from backend.config import PARENT_STORAGE_DIR
 from backend.models.rag_models import RetrievalResult, RetrievedChunk
@@ -49,8 +57,30 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass
+class StageResult:
+    """Result returned by each pipeline stage.
+
+    Stages produce new chunks (immutable) and a trace entry for
+    pipeline execution metadata. The pipeline collects these and
+    updates working state.
+
+    Attributes:
+        chunks: Transformed chunk list (new list, not mutated in place).
+        trace: Trace entry for pipeline execution metadata.
+    """
+
+    chunks: list[RetrievedChunk]
+    trace: dict = field(default_factory=dict)
+
+
+@dataclass
 class PipelineContext:
-    """Carries state through pipeline stages."""
+    """Carries state through pipeline stages.
+
+    PipelineContext stores execution state. Pipeline orchestration
+    (updating working_chunks, collecting traces) belongs in
+    RetrievalPipeline, not in helper methods here.
+    """
 
     original_query: str
     config: RetrievalConfig
@@ -61,17 +91,22 @@ class PipelineContext:
 
     # Retrieval outputs
     retrieved_chunks_per_query: list[list[RetrievedChunk]] = field(default_factory=list)
-    merged_chunks: list[RetrievedChunk] = field(default_factory=list)
-    parent_chunks: list[RetrievedChunk] = field(default_factory=list)
-    reranked_chunks: list[RetrievedChunk] = field(default_factory=list)
-    final_chunks: list[RetrievedChunk] = field(default_factory=list)
 
-    # Pipeline trace
+    # Single source of truth for current chunk state
+    # Updated by the pipeline from each stage's StageResult.chunks
+    working_chunks: list[RetrievedChunk] = field(default_factory=list)
+
+    # Pipeline execution trace (collected by pipeline from StageResult.trace)
     pipeline_trace: list[dict] = field(default_factory=list)
 
 
 class PipelineStage(ABC):
-    """Base class for pipeline stages."""
+    """Base class for pipeline stages.
+
+    Each stage executes a single transformation step.
+    Stages receive PipelineContext for reading state and config.
+    They return StageResult containing new chunks and a trace entry.
+    """
 
     @property
     @abstractmethod
@@ -80,8 +115,15 @@ class PipelineStage(ABC):
         pass
 
     @abstractmethod
-    def execute(self, context: PipelineContext) -> PipelineContext:
-        """Execute the stage, mutating and returning context."""
+    def execute(self, context: PipelineContext) -> StageResult:
+        """Execute the stage, returning transformed chunks and trace.
+
+        Args:
+            context: Pipeline execution state (read for query/config).
+
+        Returns:
+            StageResult with transformed chunks and trace metadata.
+        """
         pass
 
 
@@ -95,32 +137,38 @@ class RewriteStage(PipelineStage):
     def name(self) -> str:
         return "rewrite"
 
-    def execute(self, context: PipelineContext) -> PipelineContext:
+    def execute(self, context: PipelineContext) -> StageResult:
         qp_config = context.config.query_processing
 
         if not qp_config.rewrite_enabled:
-            context.pipeline_trace.append({"stage": "rewrite", "skipped": True})
-            return context
+            return StageResult(
+                chunks=context.working_chunks,
+                trace={"stage": "rewrite", "skipped": True},
+            )
 
         try:
             result = self.query_rewriter.rewrite(context.original_query)
             context.rewritten_query = result.retrieval_query
-            context.pipeline_trace.append({
-                "stage": "rewrite",
-                "rewritten": result.rewritten,
-                "input": context.original_query,
-                "output": result.retrieval_query,
-            })
+            return StageResult(
+                chunks=context.working_chunks,
+                trace={
+                    "stage": "rewrite",
+                    "rewritten": result.rewritten,
+                    "input": context.original_query,
+                    "output": result.retrieval_query,
+                },
+            )
         except Exception as e:
             logger.warning("Query rewrite failed: %s", e)
             context.rewritten_query = context.original_query
-            context.pipeline_trace.append({
-                "stage": "rewrite",
-                "error": str(e),
-                "fallback": True,
-            })
-
-        return context
+            return StageResult(
+                chunks=context.working_chunks,
+                trace={
+                    "stage": "rewrite",
+                    "error": str(e),
+                    "fallback": True,
+                },
+            )
 
 
 class ExpansionStage(PipelineStage):
@@ -133,38 +181,41 @@ class ExpansionStage(PipelineStage):
     def name(self) -> str:
         return "expansion"
 
-    def execute(self, context: PipelineContext) -> PipelineContext:
+    def execute(self, context: PipelineContext) -> StageResult:
         qp_config = context.config.query_processing
+        primary_query = context.rewritten_query or context.original_query
 
         if not qp_config.expand_enabled:
-            # Use rewritten query if available, else original
-            primary_query = context.rewritten_query or context.original_query
             context.expanded_queries = [primary_query]
-            context.pipeline_trace.append({"stage": "expansion", "skipped": True})
-            return context
-
-        primary_query = context.rewritten_query or context.original_query
+            return StageResult(
+                chunks=context.working_chunks,
+                trace={"stage": "expansion", "skipped": True},
+            )
 
         try:
             result = self.query_expander.expand(primary_query)
             context.expanded_queries = result.expanded_queries
-            context.pipeline_trace.append({
-                "stage": "expansion",
-                "primary_query": primary_query,
-                "expanded_queries": result.expanded_queries,
-                "count": len(result.expanded_queries),
-                "metadata": result.metadata,
-            })
+            return StageResult(
+                chunks=context.working_chunks,
+                trace={
+                    "stage": "expansion",
+                    "primary_query": primary_query,
+                    "expanded_queries": result.expanded_queries,
+                    "count": len(result.expanded_queries),
+                    "metadata": result.metadata,
+                },
+            )
         except Exception as e:
             logger.warning("Query expansion failed: %s", e)
             context.expanded_queries = [primary_query]
-            context.pipeline_trace.append({
-                "stage": "expansion",
-                "error": str(e),
-                "fallback": True,
-            })
-
-        return context
+            return StageResult(
+                chunks=context.working_chunks,
+                trace={
+                    "stage": "expansion",
+                    "error": str(e),
+                    "fallback": True,
+                },
+            )
 
 
 class RetrievalStage(PipelineStage):
@@ -182,10 +233,9 @@ class RetrievalStage(PipelineStage):
     def name(self) -> str:
         return "retrieval"
 
-    def execute(self, context: PipelineContext) -> PipelineContext:
+    def execute(self, context: PipelineContext) -> StageResult:
         queries = context.expanded_queries or [context.rewritten_query or context.original_query]
 
-        # Create retrieve function that uses the strategy
         def retrieve_fn(query: str) -> list[RetrievedChunk]:
             result = self.strategy.retrieve(
                 query=query,
@@ -194,19 +244,19 @@ class RetrievalStage(PipelineStage):
             )
             return result.chunks
 
-        # Execute retrieval for all queries in parallel
         all_results = self.executor.execute_parallel(queries, retrieve_fn)
         context.retrieved_chunks_per_query = all_results
 
         total_candidates = sum(len(r) for r in all_results)
-        context.pipeline_trace.append({
-            "stage": "retrieval",
-            "strategy": context.config.search_type,
-            "queries_executed": len(queries),
-            "total_candidates": total_candidates,
-        })
-
-        return context
+        return StageResult(
+            chunks=context.working_chunks,
+            trace={
+                "stage": "retrieval",
+                "strategy": context.config.search_type,
+                "queries_executed": len(queries),
+                "total_candidates": total_candidates,
+            },
+        )
 
 
 class MergeStage(PipelineStage):
@@ -216,13 +266,11 @@ class MergeStage(PipelineStage):
     def name(self) -> str:
         return "merge"
 
-    def execute(self, context: PipelineContext) -> PipelineContext:
-        # Flatten all chunks
+    def execute(self, context: PipelineContext) -> StageResult:
         all_chunks = []
         for chunks in context.retrieved_chunks_per_query:
             all_chunks.extend(chunks)
 
-        # Deduplicate by (document_id, chunk_index)
         seen: set[tuple] = set()
         merged = []
 
@@ -236,23 +284,22 @@ class MergeStage(PipelineStage):
                     seen.add(key)
                     merged.append(chunk)
             else:
-                # Fallback: content-based dedupe
                 content_key = chunk.document.page_content[:200]
                 if content_key not in seen:
                     seen.add(content_key)
                     merged.append(chunk)
 
-        context.merged_chunks = merged
         duplicates_removed = len(all_chunks) - len(merged)
 
-        context.pipeline_trace.append({
-            "stage": "merge",
-            "total_chunks_before": len(all_chunks),
-            "duplicates_removed": duplicates_removed,
-            "merged_count": len(merged),
-        })
-
-        return context
+        return StageResult(
+            chunks=merged,
+            trace={
+                "stage": "merge",
+                "total_chunks_before": len(all_chunks),
+                "duplicates_removed": duplicates_removed,
+                "merged_count": len(merged),
+            },
+        )
 
 
 class ParentRetrievalStage(PipelineStage):
@@ -265,30 +312,30 @@ class ParentRetrievalStage(PipelineStage):
     def name(self) -> str:
         return "parent_retrieval"
 
-    def execute(self, context: PipelineContext) -> PipelineContext:
-        if not context.config.parent_retrieval_enabled or not context.merged_chunks:
-            context.parent_chunks = context.merged_chunks
-            context.pipeline_trace.append({"stage": "parent_retrieval", "skipped": True})
-            return context
+    def execute(self, context: PipelineContext) -> StageResult:
+        if not context.config.parent_retrieval_enabled or not context.working_chunks:
+            return StageResult(
+                chunks=context.working_chunks,
+                trace={"stage": "parent_retrieval", "skipped": True},
+            )
 
         try:
-            resolved = resolve_parents(context.merged_chunks, self.parent_store)
-            context.parent_chunks = resolved
-            meta = get_parent_retrieval_metadata(context.merged_chunks, resolved)
-            context.pipeline_trace.append({
-                "stage": "parent_retrieval",
-                **meta,
-            })
+            resolved = resolve_parents(context.working_chunks, self.parent_store)
+            meta = get_parent_retrieval_metadata(context.working_chunks, resolved)
+            return StageResult(
+                chunks=resolved,
+                trace={"stage": "parent_retrieval", **meta},
+            )
         except Exception as e:
             logger.warning("Parent retrieval failed: %s", e)
-            context.parent_chunks = context.merged_chunks
-            context.pipeline_trace.append({
-                "stage": "parent_retrieval",
-                "error": str(e),
-                "fallback": True,
-            })
-
-        return context
+            return StageResult(
+                chunks=context.working_chunks,
+                trace={
+                    "stage": "parent_retrieval",
+                    "error": str(e),
+                    "fallback": True,
+                },
+            )
 
 
 class RerankStage(PipelineStage):
@@ -301,70 +348,135 @@ class RerankStage(PipelineStage):
     def name(self) -> str:
         return "reranking"
 
-    def execute(self, context: PipelineContext) -> PipelineContext:
-        candidates = context.parent_chunks if context.config.parent_retrieval_enabled else context.merged_chunks
-        if not candidates:
-            candidates = context.merged_chunks
+    def execute(self, context: PipelineContext) -> StageResult:
+        candidates = context.working_chunks
 
         if context.config.reranker == "none" or not candidates:
-            context.reranked_chunks = candidates
-            context.pipeline_trace.append({"stage": "reranking", "skipped": True})
-            return context
+            return StageResult(
+                chunks=candidates,
+                trace={"stage": "reranking", "skipped": True},
+            )
 
-        # Use primary query for reranking
         primary_query = context.rewritten_query or context.original_query
 
         try:
             reranked = self.reranker.rerank(primary_query, candidates)
-            context.reranked_chunks = reranked
-
-            context.pipeline_trace.append({
-                "stage": "reranking",
-                "reranker": context.config.reranker,
-                "candidates_before": len(candidates),
-                "candidates_after": len(reranked),
-            })
+            return StageResult(
+                chunks=reranked,
+                trace={
+                    "stage": "reranking",
+                    "reranker": context.config.reranker,
+                    "candidates_before": len(candidates),
+                    "candidates_after": len(reranked),
+                },
+            )
         except Exception as e:
             logger.warning("Reranking failed: %s", e)
-            context.reranked_chunks = candidates
-            context.pipeline_trace.append({
-                "stage": "reranking",
-                "error": str(e),
-                "fallback": True,
-            })
+            return StageResult(
+                chunks=candidates,
+                trace={
+                    "stage": "reranking",
+                    "error": str(e),
+                    "fallback": True,
+                },
+            )
 
-        return context
+
+class ContextCompressionStage(PipelineStage):
+    """Context compression stage.
+
+    Compresses working chunks by removing content irrelevant to the query.
+    Runs after reranking so the scorer/LLM only processes the highest-ranked
+    chunks that will survive the final top-k selection.
+    """
+
+    def __init__(self, compressor: BaseContextCompressor):
+        self.compressor = compressor
+
+    @property
+    def name(self) -> str:
+        return "context_compression"
+
+    def execute(self, context: PipelineContext) -> StageResult:
+        candidates = context.working_chunks
+
+        if context.config.compression_strategy == "none" or not candidates:
+            return StageResult(
+                chunks=candidates,
+                trace={"stage": "context_compression", "skipped": True},
+            )
+
+        primary_query = context.rewritten_query or context.original_query
+        start = time.perf_counter()
+
+        try:
+            original_tokens = sum(len(c.document.page_content.split()) for c in candidates)
+            original_chars = sum(len(c.document.page_content) for c in candidates)
+
+            compressed = self.compressor.compress(
+                primary_query,
+                candidates,
+                target_ratio=context.config.compression_target_ratio,
+            )
+
+            latency_ms = (time.perf_counter() - start) * 1000
+            compressed_tokens = sum(len(c.document.page_content.split()) for c in compressed)
+            compressed_chars = sum(len(c.document.page_content) for c in compressed)
+            ratio = compressed_tokens / original_tokens if original_tokens > 0 else 1.0
+
+            return StageResult(
+                chunks=compressed,
+                trace={
+                    "stage": "context_compression",
+                    "strategy": context.config.compression_strategy,
+                    "scorer": context.config.compression_scoring if context.config.compression_strategy == "extractive" else None,
+                    "original_tokens": original_tokens,
+                    "compressed_tokens": compressed_tokens,
+                    "tokens_saved": original_tokens - compressed_tokens,
+                    "compression_ratio": round(ratio, 3),
+                    "characters_saved": original_chars - compressed_chars,
+                    "latency_ms": round(latency_ms, 1),
+                },
+            )
+        except Exception as e:
+            logger.warning("Context compression failed: %s", e)
+            return StageResult(
+                chunks=candidates,
+                trace={
+                    "stage": "context_compression",
+                    "error": str(e),
+                    "fallback": True,
+                },
+            )
 
 
 class ResultBuilderStage(PipelineStage):
-    """Final result building stage."""
+    """Final result building stage.
+
+    Applies final top-k truncation and builds the pipeline summary
+    trace that gets serialized into RetrievalResult metadata.
+    """
 
     @property
     def name(self) -> str:
         return "result_builder"
 
-    def execute(self, context: PipelineContext) -> PipelineContext:
-        # Use reranked chunks if available, else merged
-        chunks = context.reranked_chunks if context.reranked_chunks else context.merged_chunks
+    def execute(self, context: PipelineContext) -> StageResult:
+        final_chunks = context.working_chunks[: context.config.reranker_top_k]
 
-        # Apply final top-k
-        final_chunks = chunks[: context.config.reranker_top_k]
-        context.final_chunks = final_chunks
-
-        # Build pipeline trace entry
         qp_config = context.config.query_processing
 
-        pipeline_trace = []
+        pipeline_summary = []
 
         if qp_config.rewrite_enabled:
-            pipeline_trace.append({
+            pipeline_summary.append({
                 "stage": "rewrite",
                 "enabled": True,
                 "strategy": qp_config.rewrite_strategy,
             })
 
         if qp_config.expand_enabled:
-            pipeline_trace.append({
+            pipeline_summary.append({
                 "stage": "expansion",
                 "enabled": True,
                 "strategy": qp_config.expand_strategy,
@@ -372,7 +484,7 @@ class ResultBuilderStage(PipelineStage):
                 "queries_generated": len(context.expanded_queries),
             })
 
-        pipeline_trace.extend([
+        pipeline_summary.extend([
             {
                 "stage": "retrieval",
                 "strategy": context.config.search_type,
@@ -381,42 +493,54 @@ class ResultBuilderStage(PipelineStage):
             },
             {
                 "stage": "merge",
-                "duplicates_removed": sum(len(r) for r in context.retrieved_chunks_per_query) - len(context.merged_chunks),
-                "merged_count": len(context.merged_chunks),
+                "duplicates_removed": sum(len(r) for r in context.retrieved_chunks_per_query) - len(context.working_chunks),
+                "merged_count": len(context.working_chunks),
             },
         ])
 
         if context.config.parent_retrieval_enabled:
-            candidates_before = len(context.merged_chunks)
-            candidates_after = len(context.parent_chunks) if context.parent_chunks else len(context.merged_chunks)
-            pipeline_trace.append({
+            pipeline_summary.append({
                 "stage": "parent_retrieval",
-                "candidates_before": candidates_before,
-                "candidates_after": candidates_after,
             })
 
         if context.config.reranker != "none":
-            rerank_candidates = len(context.parent_chunks) if context.config.parent_retrieval_enabled else len(context.merged_chunks)
-            pipeline_trace.append({
+            pipeline_summary.append({
                 "stage": "reranking",
                 "reranker": context.config.reranker,
-                "candidates_before": rerank_candidates,
-                "candidates_after": len(context.reranked_chunks) if context.reranked_chunks else rerank_candidates,
             })
 
-        pipeline_trace.append({
+        if context.config.compression_strategy != "none":
+            pipeline_summary.append({
+                "stage": "context_compression",
+                "strategy": context.config.compression_strategy,
+            })
+
+        pipeline_summary.append({
             "stage": "result_builder",
             "final_count": len(final_chunks),
         })
 
-        # Update context's trace with the full pipeline trace
-        context.pipeline_trace = pipeline_trace
-
-        return context
+        return StageResult(
+            chunks=final_chunks,
+            trace={
+                "stage": "result_builder",
+                "final_count": len(final_chunks),
+                "summary": pipeline_summary,
+            },
+        )
 
 
 class RetrievalPipeline:
-    """Main pipeline orchestrator."""
+    """Main pipeline orchestrator.
+
+    Owns pipeline configuration and stage execution. The pipeline
+    is responsible for:
+        - Building stages from config
+        - Executing each stage sequentially
+        - Updating working_chunks from StageResult.chunks
+        - Collecting pipeline_trace from StageResult.trace
+        - Building the final RetrievalResult
+    """
 
     def __init__(
         self,
@@ -424,31 +548,32 @@ class RetrievalPipeline:
         query_expander: BaseQueryExpander | None = None,
         strategy: RetrievalStrategy | None = None,
         reranker: BaseReranker | None = None,
+        compressor: BaseContextCompressor | None = None,
         executor: RetrievalExecutor | None = None,
     ):
         """Initialize pipeline with optional injected dependencies.
 
         Args:
-            query_rewriter: Query rewriter (created from config if None)
-            query_expander: Query expander (created from config if None)
-            strategy: Retrieval strategy (created from config if None)
-            reranker: Reranker (created from config if None)
-            executor: Retrieval executor (created if None)
+            query_rewriter: Query rewriter (created from config if None).
+            query_expander: Query expander (created from config if None).
+            strategy: Retrieval strategy (created from config if None).
+            reranker: Reranker (created from config if None).
+            compressor: Context compressor (created from config if None).
+            executor: Retrieval executor (created if None).
         """
         self._query_rewriter = query_rewriter
         self._query_expander = query_expander
         self._strategy = strategy
         self._reranker = reranker
+        self._compressor = compressor
         self._executor = executor or RetrievalExecutor()
 
-        # Will be built on first execute() with config
         self._stages: list[PipelineStage] | None = None
 
     def _build_stages(self, config: RetrievalConfig):
         """Build pipeline stages from config."""
         qp_config = config.query_processing
 
-        # Create components if not injected
         rewriter = self._query_rewriter or get_query_rewriter(qp_config.rewrite_strategy)
         expander = self._query_expander or get_query_expander(
             qp_config.expand_strategy,
@@ -456,8 +581,13 @@ class RetrievalPipeline:
         )
         strategy = self._strategy or get_strategy(config.search_type, config.hybrid_enabled)
         reranker = self._reranker or get_reranker(config.reranker)
+        compressor = self._compressor or get_context_compressor(
+            config.compression_strategy,
+            config.compression_scoring,
+        )
 
         parent_store = FileParentStore(PARENT_STORAGE_DIR)
+
         self._stages = [
             RewriteStage(rewriter),
             ExpansionStage(expander),
@@ -465,11 +595,15 @@ class RetrievalPipeline:
             MergeStage(),
             ParentRetrievalStage(parent_store),
             RerankStage(reranker),
+            ContextCompressionStage(compressor),
             ResultBuilderStage(),
         ]
 
     def execute(self, query: str, config: RetrievalConfig) -> tuple[str, RetrievalResult]:
         """Execute the full pipeline.
+
+        Each stage returns StageResult {chunks, trace}.
+        The pipeline updates working_chunks and collects pipeline_trace.
 
         Args:
             query: The user's original query.
@@ -481,25 +615,31 @@ class RetrievalPipeline:
         if self._stages is None:
             self._build_stages(config)
 
+        stages = self._stages
+        if stages is None:
+            raise RuntimeError("Pipeline stages were not initialized")
+
         context = PipelineContext(
             original_query=query,
             config=config,
         )
 
-        # Execute all stages
-        for stage in self._stages:
-            context = stage.execute(context)
+        for stage in stages:
+            result = stage.execute(context)
+            context.working_chunks = result.chunks
+            context.pipeline_trace.append(result.trace)
 
-        # Build final RetrievalResult
         retrieval_query = context.rewritten_query or context.original_query
         qp_config = config.query_processing
+
+        pipeline_summary = context.pipeline_trace[-1].get("summary", []) if context.pipeline_trace else []
 
         result = RetrievalResult(
             original_query=context.original_query,
             retrieval_query=retrieval_query,
-            chunks=context.final_chunks,
+            chunks=context.working_chunks,
             retrieval_metadata={
-                "pipeline": context.pipeline_trace,
+                "pipeline": pipeline_summary,
                 "config": {
                     "search_type": config.search_type,
                     "reranker": config.reranker,
@@ -509,14 +649,15 @@ class RetrievalPipeline:
                     "expand_count": qp_config.expand_count,
                     "rewrite_enabled": qp_config.rewrite_enabled,
                     "rewrite_strategy": qp_config.rewrite_strategy,
+                    "compression_strategy": config.compression_strategy,
+                    "compression_scoring": config.compression_scoring,
                 },
             },
         )
 
-        # Serialize for agent
         serialized = "\n\n".join(
             f"Source: {chunk.document.metadata}\nContent: {chunk.document.page_content}"
-            for chunk in context.final_chunks
+            for chunk in context.working_chunks
         )
 
         return serialized, result
@@ -533,7 +674,6 @@ def create_pipeline_from_config(config: RetrievalConfig) -> RetrievalPipeline:
     """
     qp_config = config.query_processing
 
-    # Pre-create components for testability/performance
     query_rewriter = get_query_rewriter(qp_config.rewrite_strategy)
     query_expander = get_query_expander(
         qp_config.expand_strategy,
@@ -541,10 +681,15 @@ def create_pipeline_from_config(config: RetrievalConfig) -> RetrievalPipeline:
     )
     strategy = get_strategy(config.search_type, config.hybrid_enabled)
     reranker = get_reranker(config.reranker)
+    compressor = get_context_compressor(
+        config.compression_strategy,
+        config.compression_scoring,
+    )
 
     return RetrievalPipeline(
         query_rewriter=query_rewriter,
         query_expander=query_expander,
         strategy=strategy,
         reranker=reranker,
+        compressor=compressor,
     )

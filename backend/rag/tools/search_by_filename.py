@@ -19,8 +19,7 @@ from backend.services.document_service import search_documents_by_filename
 logger = logging.getLogger(__name__)
 
 
-@tool(response_format="content_and_artifact")
-def search_by_filename(filename: str) -> tuple[str, list[dict[str, Any]]]:
+def _search_by_filename(filename: str) -> tuple[str, list[dict[str, Any]]]:
     """Search for indexed documents matching a filename.
 
     Performs case-insensitive partial matching on document filenames.
@@ -46,3 +45,6 @@ def search_by_filename(filename: str) -> tuple[str, list[dict[str, Any]]]:
 
     logger.debug("Found %d documents matching '%s'", len(documents), filename)
     return serialized, documents
+
+
+search_by_filename: Any = tool(response_format="content_and_artifact")(_search_by_filename)

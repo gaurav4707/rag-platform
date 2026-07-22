@@ -35,6 +35,7 @@ from backend.rag.retrieval_pipeline import (
     RerankStage,
     ResultBuilderStage,
     RewriteStage,
+    StageResult,
     create_pipeline_from_config,
 )
 from backend.rag.splitter import HierarchicalSplitResult, HierarchicalSplitter
@@ -407,29 +408,29 @@ class TestParentRetrievalStage:
         stage = ParentRetrievalStage(MagicMock())
         config = _default_config(parent_retrieval_enabled=False)
         ctx = PipelineContext(original_query="test", config=config)
-        ctx.merged_chunks = [_make_chunk("a")]
+        ctx.working_chunks = [_make_chunk("a")]
         result = stage.execute(ctx)
-        assert result.parent_chunks == ctx.merged_chunks
-        assert result.pipeline_trace[-1]["skipped"] is True
+        assert result.chunks == ctx.working_chunks
+        assert result.trace["skipped"] is True
 
     def test_skipped_when_no_chunks(self):
         stage = ParentRetrievalStage(MagicMock())
         config = _default_config(parent_retrieval_enabled=True)
         ctx = PipelineContext(original_query="test", config=config)
-        ctx.merged_chunks = []
+        ctx.working_chunks = []
         result = stage.execute(ctx)
-        assert result.parent_chunks == []
-        assert result.pipeline_trace[-1]["skipped"] is True
+        assert result.chunks == []
+        assert result.trace["skipped"] is True
 
     def test_resolves_parents(self, parent_store, sample_parent_blocks, child_chunks):
         parent_store.store_parents("doc1", sample_parent_blocks)
         stage = ParentRetrievalStage(parent_store)
         config = _default_config(parent_retrieval_enabled=True)
         ctx = PipelineContext(original_query="test", config=config)
-        ctx.merged_chunks = child_chunks
+        ctx.working_chunks = child_chunks
         result = stage.execute(ctx)
-        assert len(result.parent_chunks) == 2
-        assert "parent_retrieval" in result.pipeline_trace[-1]["stage"]
+        assert len(result.chunks) == 2
+        assert result.trace["stage"] == "parent_retrieval"
 
     def test_failure_falls_back(self):
         mock_store = MagicMock()
@@ -437,19 +438,19 @@ class TestParentRetrievalStage:
         stage = ParentRetrievalStage(mock_store)
         config = _default_config(parent_retrieval_enabled=True)
         ctx = PipelineContext(original_query="test", config=config)
-        ctx.merged_chunks = [_make_chunk("a", parent_ref={"parent_id": "p0", "page_range": [1, 2]})]
+        ctx.working_chunks = [_make_chunk("a", parent_ref={"parent_id": "p0", "page_range": [1, 2]})]
         result = stage.execute(ctx)
-        assert len(result.parent_chunks) == 1
-        assert result.pipeline_trace[-1].get("fallback") is True
+        assert len(result.chunks) == 1
+        assert result.trace.get("fallback") is True
 
     def test_pipeline_trace_with_metadata(self, parent_store, sample_parent_blocks, child_chunks):
         parent_store.store_parents("doc1", sample_parent_blocks)
         stage = ParentRetrievalStage(parent_store)
         config = _default_config(parent_retrieval_enabled=True)
         ctx = PipelineContext(original_query="test", config=config)
-        ctx.merged_chunks = child_chunks
+        ctx.working_chunks = child_chunks
         result = stage.execute(ctx)
-        trace = result.pipeline_trace[-1]
+        trace = result.trace
         assert trace["child_chunks_found"] == 3
         assert trace["unique_parents"] == 2
 

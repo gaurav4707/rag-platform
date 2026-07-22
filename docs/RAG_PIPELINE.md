@@ -758,27 +758,37 @@ retrieve_context
 │  ├── Single query → direct retrieval            │
 │  └── Multiple queries → parallel via executor   │
 │                                                 │
-│  MergeStage (multi-query only)                  │
+│  MergeStage                                     │
 │  ├── Flattens results from all queries          │
 │  ├── Deduplicates by (doc_id, chunk_index)      │
-│  └── Preserves first/highest-scored occurrence  │
+│  └── Produces working_chunks                    │
 │                                                 │
 │  ParentRetrievalStage (if parent_retrieval)     │
 │  ├── Resolves child chunks to parent blocks     │
 │  ├── Deduplicates by parent_id (keeps max score)│
 │  ├── Falls back to child when parent missing    │
-│  └── Attaches metadata to pipeline trace        │
+│  └── Transforms working_chunks                  │
 │                                                 │
 │  RerankStage (if reranker != "none")            │
 │  ├── Cross-encoder relevance scoring            │
-│  │   (on parent chunks if parent_retrieval)     │
-│  └── Reorders by relevance score                │
+│  ├── Reorders by relevance score                │
+│  └── Transforms working_chunks                  │
+│                                                 │
+│  ContextCompressionStage (if compression)       │
+│  ├── Removes irrelevant content from chunks     │
+│  ├── Preserves metadata, provenance, scores     │
+│  ├── Strategy: extractive (keyword/embedding)   │
+│  │         or LLM (provider-agnostic)           │
+│  └── Transforms working_chunks                  │
 │                                                 │
 │  ResultBuilderStage                             │
-│  ├── Applies final top-k                        │
-│  ├── Builds pipeline trace metadata             │
+│  ├── Applies final top-k to working_chunks      │
+│  ├── Builds pipeline summary trace              │
 │  └── Returns RetrievalResult                    │
 └─────────────────────────────────────────────────┘
+
+Each stage returns StageResult {chunks, trace}.
+Pipeline updates working_chunks from each stage's result.
 
 ↓
 
@@ -813,7 +823,7 @@ Streaming Response
 - Query Rewriting (implemented)
 - Cross-Encoder Reranking (implemented)
 - Multi-query Retrieval (implemented)
-- Context Compression (planned)
+- Context Compression (implemented, Sprint 6.3)
 - Parent Document Retrieval (implemented, Sprint 6.2)
 - Adaptive Chunking (planned)
 

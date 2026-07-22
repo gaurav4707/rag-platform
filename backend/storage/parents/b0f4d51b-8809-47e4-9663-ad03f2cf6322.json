@@ -1,0 +1,20 @@
+{
+  "document_id": "b0f4d51b-8809-47e4-9663-ad03f2cf6322",
+  "parents": [
+    {
+      "parent_id": "b0f4d51b-8809-47e4-9663-ad03f2cf6322_parent_0",
+      "content": "Test content 2",
+      "start_page": 1,
+      "end_page": 1,
+      "child_indices": [],
+      "metadata": {
+        "page": 1,
+        "document_id": "b0f4d51b-8809-47e4-9663-ad03f2cf6322",
+        "filename": "doc2.pdf",
+        "file_hash": "d3777e99a70cc1ce376cb31b24bb8217533f1bb2ddf85ae7b0c968655b1526c9",
+        "start_index": 0,
+        "parent_id": "b0f4d51b-8809-47e4-9663-ad03f2cf6322_parent_0"
+      }
+    }
+  ]
+}

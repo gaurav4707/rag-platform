@@ -196,11 +196,37 @@ Delivered: [Current]
 
 - `test_parent_retrieval.py`: 39 tests covering store (9), splitter (5), resolver (10), metadata (3), stage (5), pipeline integration (7)
 
-### Planned (Sprint 6.3+)
+### Sprint 6.3 — Context Compression (Current)
+
+#### Added
+
+- **Context Compression Stage**: `rag/retrieval_pipeline.py` — `ContextCompressionStage` inserted after `RerankStage`, compresses working chunks before prompt construction
+- **context_compression.py**: `BaseContextCompressor` protocol with `NoOpContextCompressor`, `ExtractiveContextCompressor` (sentence-level extraction via scorer), `LLMContextCompressor` (provider-backed, lazy initialization)
+- **BaseRelevanceScorer**: Generic scorer protocol with `KeywordScorer` (default, lightweight keyword overlap) and `EmbeddingScorer` (optional, provider-backed cosine similarity)
+- **StageResult dataclass**: Pipeline stage return type `{chunks, trace}` enabling immutable chunk flow
+- **working_chunks refactor**: `PipelineContext` consolidated to single `working_chunks` field (removed `merged_chunks`, `parent_chunks`, `reranked_chunks`, `final_chunks`)
+- **RetrievalConfig compression fields**: `compression_strategy` ("none" | "extractive" | "llm"), `compression_scoring` ("keyword" | "embedding"), `compression_target_ratio`, `compression_max_tokens`
+- **Expanded compression metrics**: `original_tokens`, `compressed_tokens`, `tokens_saved`, `compression_ratio`, `characters_saved`, `latency_ms`, `scorer`
+- **`_single_query_retrieve`**: Refactored to thin compatibility wrapper around `RetrievalPipeline`
+- **Immutable stage semantics**: Each stage returns new `StageResult` with new chunk list; pipeline updates `working_chunks` reference
+
+#### Changed
+
+- `retrieval_pipeline.py`: All stages refactored to return `StageResult`; `PipelineContext` simplified to `working_chunks`; `ContextCompressionStage` inserted after `RerankStage`; `ResultBuilderStage` includes compression in pipeline summary
+- `PipelineContext`: Removed `merged_chunks`, `parent_chunks`, `reranked_chunks`, `final_chunks` — replaced by single `working_chunks` field updated by pipeline from `StageResult.chunks`
+- Pipeline order: `Rewrite → Expansion → Retrieval → Merge → ParentRetrieval → Rerank → ContextCompression → ResultBuilder`
+- `retriever.py`: `_single_query_retrieve` delegates to `create_pipeline_from_config` with `expand_enabled=False`
+- `retrieval_config.py`: Added `compression_strategy`, `compression_scoring`, `compression_target_ratio`, `compression_max_tokens` fields
+
+#### Added (Tests)
+
+- `test_context_compression.py`: 30 tests covering NoOp, KeywordScorer, EmbeddingScorer, ExtractiveCompressor, LLMCompressor, factory functions, compression stage, pipeline integration, metadata preservation, failure fallback
+
+### Planned (Sprint 6.4+)
 
 - **New tools**: summarize_document, search_by_metadata
 - **Agent improvements**: Reflection, planning, multi-step reasoning, reasoning traces
-- **Retrieval**: Context compression, adaptive chunking
+- **Retrieval**: Adaptive chunking
 - **Infrastructure**: Multiple LLM/embedding providers, conversation memory, agent observability
 
 ## Milestone 7 — Multimodal Intelligence

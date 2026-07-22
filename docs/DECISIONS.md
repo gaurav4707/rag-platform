@@ -2770,5 +2770,106 @@ Cleaner but would break existing code referencing `config.query_rewrite` or `con
 
 ---
 
+# ADR-040
+
+## Title
+
+Context Compression with Immutable Stage Results
+
+**Status**
+
+Accepted
+
+### Context
+
+Sprint 6.3 introduced Context Compression as a retrieval pipeline stage. Three architectural challenges prompted decisions beyond the compression implementation itself:
+
+1. **PipelineContext bloat**: Each new stage (ParentRetrieval, Rerank, etc.) added a dedicated chunk field (`merged_chunks`, `parent_chunks`, `reranked_chunks`, `final_chunks`), making `PipelineContext` grow linearly with each stage and coupling stage implementations to field names.
+
+2. **Mutable chunk flow**: Stages mutated `PipelineContext` in place, making it hard to trace which stage changed what, and preventing functional pipeline semantics.
+
+3. **Stage coupling**: `RerankStage` had to know whether `parent_retrieval` was enabled to decide which field to read (`parent_chunks` vs `merged_chunks`).
+
+### Decision
+
+#### 1. `working_chunks` replaces all chunk fields
+
+Consolidate `PipelineContext` to a single `working_chunks` field. Every stage reads and writes the same field. Pipeline stage ordering alone determines the transformation sequence.
+
+#### 2. `StageResult` return type for all stages
+
+Each stage returns `StageResult {chunks, trace}` instead of mutating context. The pipeline owns updating `context.working_chunks = result.chunks` and collecting `context.pipeline_trace`. This enables functional pipeline semantics and easier testing.
+
+```python
+@dataclass
+class StageResult:
+    chunks: list[RetrievedChunk]
+    trace: dict = field(default_factory=dict)
+```
+
+#### 3. Context Compression after Reranking
+
+Compression runs after reranking (not before) so the reranker evaluates complete parent contexts. Compression only processes the highest-ranked chunks that will survive final top-k selection.
+
+Pipeline order: `Rewrite → Expansion → Retrieval → Merge → ParentRetrieval → Rerank → ContextCompression → ResultBuilder`
+
+#### 4. BaseRelevanceScorer as generic abstraction
+
+The scorer interface is named `BaseRelevanceScorer`, not `BaseCompressionScorer`, so it can be reused by Graph Retrieval, reranking, and future scoring consumers. The `ExtractiveContextCompressor` depends on this interface rather than embedding scoring logic internally.
+
+#### 5. Separate scoring strategies
+
+Two scorer implementations:
+- `KeywordScorer` (default, MVP) — lightweight keyword overlap, no external dependencies
+- `EmbeddingScorer` (optional) — provider-backed cosine similarity via `get_embedding_provider()`
+
+Configurable via `compression_scoring: "keyword" | "embedding"`.
+
+#### 6. Lazy LLM initialization
+
+`LLMContextCompressor` initializes the LLM only when `compression_strategy == "llm"` and `compress()` is first called. No LLM instantiation for extractive or no-op modes.
+
+#### 7. `_single_query_retrieve` as thin wrapper
+
+Rather than removing the legacy function and breaking tests, `_single_query_retrieve` now delegates to `create_pipeline_from_config()` with `expand_enabled=False`. This preserves backward compatibility while ensuring all retrieval paths flow through the pipeline.
+
+### Alternatives Considered
+
+#### 1. Keep per-stage fields on PipelineContext
+
+Simpler initial implementation but adds a field per stage. Would create 10+ fields by Milestone 9 (graph_chunks, web_chunks, multimodal_chunks, etc.) with complex routing logic in each stage.
+
+#### 2. Compression before Reranking
+
+Applied compression earlier to reduce token usage before reranking. Rejected because the reranker needs complete contexts for accurate scoring, and compressing before reranking risks discarding information the reranker would consider relevant.
+
+#### 3. Compression-scoped scorer interface
+
+Naming the interface `BaseCompressionScorer` would be more obvious but would require a parallel interface when GraphRAG or reranking needs scoring. The generic name anticipates reuse.
+
+### Consequences
+
+**Advantages:**
+- PipelineContext is stable — no new fields for future stages (GraphRAG, Web Search, Multimodal)
+- Stage boundary is always `StageResult {chunks, trace}` — no stage reads/writes another stage's field
+- Immutable chunk flow prevents accidental mutation and simplifies debugging
+- Compression metrics are comprehensive for benchmarking
+- Graceful degradation: any compression failure returns original chunks
+
+**Trade-offs:**
+- `working_chunks` loses explicit traceability per stage — compensated by `pipeline_trace` metadata
+- ResultBuilderStage must reconstruct pipeline summary from config rather than reading accumulated trace — necessary because individual traces are too detailed for metadata serialization
+- `_single_query_retrieve` thin wrapper adds a small allocation overhead for the pipeline config
+
+### Revisit When
+
+- `compression_max_tokens` needs dynamic tuning based on actual LLM context window
+- Cross-encoder scoring is explored for extractive compression (potential third scorer)
+- The `_single_query_retrieve` wrapper is removed in a cleanup milestone
+- Compression batching across chunks in the LLM compressor improves throughput
+- Adaptive Chunking (Sprint 6.4) introduces sizing constraints that interact with compression targets
+
+---
+
 # Decision Guidelines
 

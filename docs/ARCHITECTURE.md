@@ -694,6 +694,69 @@ The Reranker:
 
 ---
 
+## context_compression.py
+
+Responsible for removing irrelevant content from retrieved chunks before prompt construction.
+
+Compression is NOT summarization — it removes irrelevant portions while preserving answerable information.
+
+### Architecture
+
+```
+BaseRelevanceScorer (protocol)
+    ├── KeywordScorer (default, lightweight keyword overlap)
+    └── EmbeddingScorer (provider-backed, optional)
+
+BaseContextCompressor (protocol)
+    ├── NoOpContextCompressor (pass-through, compression disabled)
+    ├── ExtractiveContextCompressor (sentence-level via scorer)
+    └── LLMContextCompressor (provider-backed, lazy initialization)
+```
+
+### Design Principles
+
+- **Provider-agnostic**: Compressors use provider factory functions (`get_llm()`, `get_embedding_provider()`)
+- **Lazy initialization**: LLMContextCompressor only loads the LLM when compression is actually invoked
+- **Immutable output**: Produces new RetrievedChunk instances with compressed content and preserved metadata
+- **Graceful fallback**: All compressors return original chunks on failure
+- **Generic scorer**: BaseRelevanceScorer protocol is not compression-specific — reusable for Graph Retrieval, reranking, and future scoring needs
+
+### Compression Pipeline Stage
+
+`ContextCompressionStage` runs after `RerankStage` and before `ResultBuilderStage`:
+
+- Receives `working_chunks` (already reranked and ordered by relevance)
+- Applies compression independently per chunk
+- Preserves all metadata (document_id, filename, page, score, provenance)
+- Records detailed metrics: original_tokens, compressed_tokens, tokens_saved, compression_ratio, characters_saved, latency_ms
+- Falls back to original chunks on any failure
+
+### Configuration
+
+Controlled via `RetrievalConfig`:
+
+- `compression_strategy`: "none" (default) | "extractive" | "llm"
+- `compression_scoring`: "keyword" (default) | "embedding"
+- `compression_target_ratio`: float (default 0.5)
+- `compression_max_tokens`: int (default 512)
+
+---
+
+## StageResult
+
+A reusable dataclass returned by every pipeline stage:
+
+```python
+@dataclass
+class StageResult:
+    chunks: list[RetrievedChunk]   # transformed chunks (new list)
+    trace: dict                    # stage execution metadata
+```
+
+Each stage receives `PipelineContext` (read-only for chunks), returns `StageResult`. The pipeline updates `context.working_chunks = result.chunks` and appends `result.trace` to `context.pipeline_trace`. This enables immutable chunk flow and clean stage boundaries.
+
+---
+
 ## retriever.py
 
 Responsible only for retrieval orchestration.
@@ -719,7 +782,7 @@ The RetrievalResult is the single source of truth for downstream components.
 
 ## retrieval_config.py
 
-Defines the `RetrievalConfig` dataclass for configuring retrieval behavior.
+Defines the `RetrievalConfig` and `QueryProcessingConfig` dataclasses for configuring retrieval behavior.
 
 Fields:
 
@@ -729,8 +792,6 @@ Fields:
 - fetch_k: int (default 20)
 - lambda_mult: float (default 0.5)
 - metadata_filter: dict | None
-- query_rewrite: "none" | "llm" (default "none")
-- query_rewriting_enabled: bool (default True)
 
 Hybrid-specific:
 
@@ -740,10 +801,25 @@ Hybrid-specific:
 - rrf_k: int (default 60)
 - hybrid_enabled: bool (default True)
 
+Query processing (via nested `QueryProcessingConfig`):
+
+- rewrite_enabled: bool (default True)
+- rewrite_strategy: "none" | "llm" (default "none")
+- expand_enabled: bool (default False)
+- expand_strategy: "none" | "llm" (default "none")
+- expand_count: int (default 3)
+
 Reranking settings:
 
 - reranker: "none" | "cross_encoder" (default "cross_encoder")
 - reranker_top_k: int (default 6)
+
+Context compression settings:
+
+- compression_strategy: "none" | "extractive" | "llm" (default "none")
+- compression_scoring: "keyword" | "embedding" (default "keyword")
+- compression_target_ratio: float (default 0.5)
+- compression_max_tokens: int (default 512)
 
 Provides a `DEFAULT_RETRIEVAL_CONFIG` singleton.
 
@@ -1033,9 +1109,9 @@ The architecture should allow adding:
 - Hybrid Search (implemented)
 - Query Rewriting (implemented)
 - Reranking (implemented)
-- Multi-query Retrieval (planned)
-- Parent Document Retrieval (planned)
-- Context Compression (planned)
+- Multi-query Retrieval (implemented)
+- Parent Document Retrieval (implemented)
+- Context Compression (implemented, Sprint 6.3)
 - Adaptive Chunking (planned)
 
 ## Agent

@@ -54,8 +54,10 @@ class ConversationState:
             msg.tool_calls = tool_calls
         self.messages.append(msg)
 
-    def add_tool_message(self, tool_call_id: str, content: str, artifact: Any = None) -> None:
-        self.messages.append(ToolMessage(content=content, tool_call_id=tool_call_id))
+    def add_tool_message(self, tool_call_id: str, content: Any, artifact: Any = None) -> None:
+        # Tool content can be non-string (e.g., list/dict). Ensure we pass a string to ToolMessage.
+        content_str = content if isinstance(content, str) else str(content or "")
+        self.messages.append(ToolMessage(content=content_str, tool_call_id=tool_call_id))
 
     def get_messages_for_llm(self) -> list:
         """Return messages formatted for LLM consumption."""
@@ -89,7 +91,7 @@ class ToolExecutor:
         return self._tools
 
     @property
-    def tool_map(self) -> dict[str, BaseTool]:
+    def tool_map(self) -> dict[str, Any]:
         if self._tool_map is None:
             self._tool_map = {tool.name: tool for tool in self.tools}
         return self._tool_map
@@ -200,10 +202,11 @@ class ToolExecutor:
             result = tool.invoke(tool_call)
 
             if isinstance(result, ToolMessage):
-                content = result.content
+                content = result.content if isinstance(result.content, str) else str(result.content)
                 artifact = result.artifact
             elif isinstance(result, tuple) and len(result) == 2:
-                content, artifact = result
+                content = result[0] if isinstance(result[0], str) else str(result[0])
+                artifact = result[1]
             else:
                 content = str(result)
                 artifact = result

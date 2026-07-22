@@ -53,6 +53,12 @@ class RetrievalConfig:
     reranker: Literal["none", "cross_encoder"] = "cross_encoder"
     reranker_top_k: int = 6
 
+    # Context compression settings
+    compression_strategy: Literal["none", "extractive", "llm"] = "none"
+    compression_scoring: Literal["keyword", "embedding"] = "keyword"
+    compression_target_ratio: float = 0.5
+    compression_max_tokens: int = 512
+
     # Backward compatibility properties
     @property
     def query_rewrite(self) -> str:

@@ -6,7 +6,7 @@ from langchain_core.documents import Document
 @dataclass
 class RetrievedChunk:
     document: Document
-    score: float
+    score: float | None = None
 
 
 @dataclass
