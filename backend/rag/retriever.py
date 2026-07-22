@@ -3,6 +3,10 @@
 This module provides the `retrieve_context` tool that the Agent uses to
 retrieve relevant document chunks for a user query. It orchestrates the
 retrieval pipeline including query rewriting and strategy selection.
+
+Architecture:
+- Single-query path: rewrite -> strategy -> rerank (backward compatible)
+- Multi-query path: rewrite -> expand -> parallel retrieve -> merge -> rerank (via RetrievalPipeline)
 """
 
 from langchain.tools import tool
@@ -12,15 +16,16 @@ from backend.rag.query_rewriter import get_query_rewriter
 from backend.rag.retrieval_strategies import get_strategy
 from backend.rag.reranker import get_reranker
 from backend.rag.query_parser import parse_query, build_metadata_filter
+from backend.rag.retrieval_pipeline import RetrievalPipeline, create_pipeline_from_config
 from backend.models.rag_models import RetrievalResult, RetrievedChunk
 
 import logging
+import time
 
 logger = logging.getLogger(__name__)
 
 
 # Module-level wrappers for test patching compatibility
-# These are called by the internal functions and can be patched by tests
 # Tests patch: backend.rag.retriever.similarity_search_with_scores_filtered
 # and: backend.rag.retriever.mmr_search_with_scores
 def similarity_search_with_scores_filtered(query: str, top_k: int, metadata_filter: dict | None = None):
@@ -182,98 +187,72 @@ def rewrite_query(query: str, strategy: str = "none") -> str:
     return _rewrite_query(query, strategy)
 
 
-@tool(response_format="content_and_artifact")
-def retrieve_context(
+def _single_query_retrieve(
     query: str,
-    config: RetrievalConfig = DEFAULT_RETRIEVAL_CONFIG,
-):
-    """Retrieve information to help answer a query.
+    config: RetrievalConfig,
+    original_query: str | None = None,
+) -> RetrievalResult:
+    """Execute single-query retrieval (rewrite -> strategy -> rerank).
 
-    Returns a RetrievalResult containing the query and retrieved chunks with scores.
+    This is the legacy single-query path, maintained for backward compatibility
+    and when multi-query is disabled.
     """
-    # Parse query for page references and other metadata constraints
-    parsed = parse_query(query)
+    # Query rewriting
+    rewritten = False
+    retrieval_query = query
 
-    # Build combined metadata filter: merge page filter with existing config filter
-    metadata_filter = build_metadata_filter(
-        page=parsed.page,
-        existing_filter=config.metadata_filter,
-    )
+    if config.query_processing.rewrite_enabled:
+        try:
+            rewriter = get_query_rewriter(config.query_processing.rewrite_strategy)
+            result = rewriter.rewrite(query)
+            retrieval_query = result.retrieval_query
+            rewritten = result.rewritten
+        except Exception:
+            logger.warning("Query rewrite failed, using original query")
+            retrieval_query = query
+            rewritten = False
 
-    # Create updated config with merged filter and cleaned query
-    # Note: we need to create a new config since RetrievalConfig is frozen
-    updated_config = RetrievalConfig(
-        top_k=config.top_k,
-        search_type=config.search_type,
-        score_threshold=config.score_threshold,
-        fetch_k=config.fetch_k,
-        lambda_mult=config.lambda_mult,
-        metadata_filter=metadata_filter,
-        query_rewrite=config.query_rewrite,
-        dense_top_k=config.dense_top_k,
-        bm25_top_k=config.bm25_top_k,
-        final_top_k=config.final_top_k,
-        rrf_k=config.rrf_k,
-        hybrid_enabled=config.hybrid_enabled,
-        query_rewriting_enabled=config.query_rewriting_enabled,
-        reranker=config.reranker,
-        reranker_top_k=config.reranker_top_k,
-    )
-
-    # Use backward-compatible rewrite_query function on cleaned query
-    try:
-        retrieval_query = rewrite_query(parsed.cleaned_query, updated_config.query_rewrite)
-        rewritten = retrieval_query != parsed.cleaned_query
-    except Exception:
-        logger.warning("Query rewrite failed, using cleaned query")
-        retrieval_query = parsed.cleaned_query
-        rewritten = False
-
-    # Select retrieval strategy based on config
-    strategy = get_strategy(updated_config.search_type, updated_config.hybrid_enabled)
-
-    # Execute retrieval with the (possibly rewritten) query
+    # Strategy selection and retrieval
+    strategy = get_strategy(config.search_type, config.hybrid_enabled)
     retrieval_result = strategy.retrieve(
         query=retrieval_query,
-        original_query=parsed.original_query,
-        config=updated_config,
+        original_query=original_query,
+        config=config,
     )
 
-    # Apply reranking if enabled
+    # Reranking
     reranking_start = None
     reranking_applied = False
     candidate_count = len(retrieval_result.chunks)
 
-    if updated_config.reranker != "none" and retrieval_result.chunks:
-        reranker = get_reranker(updated_config.reranker)
-        reranking_start = __import__("time").perf_counter()
+    if config.reranker != "none" and retrieval_result.chunks:
+        reranker = get_reranker(config.reranker)
+        reranking_start = time.perf_counter()
         reranked_chunks = reranker.rerank(retrieval_query, retrieval_result.chunks)
-        reranking_latency_ms = (__import__("time").perf_counter() - reranking_start) * 1000
+        reranking_latency_ms = (time.perf_counter() - reranking_start) * 1000
 
         # Apply final top-k after reranking
-        final_chunks = reranked_chunks[: updated_config.reranker_top_k]
+        final_chunks = reranked_chunks[: config.reranker_top_k]
 
         retrieval_result.chunks = final_chunks
         reranking_applied = True
 
         logger.info(
             "Reranking applied: %s | Candidates: %d -> Final: %d",
-            updated_config.reranker,
+            config.reranker,
             candidate_count,
             len(final_chunks),
         )
     else:
         reranking_latency_ms = None
         # Still apply final top-k for consistency
-        retrieval_result.chunks = retrieval_result.chunks[: updated_config.reranker_top_k]
+        retrieval_result.chunks = retrieval_result.chunks[: config.reranker_top_k]
 
     # Update retrieval metadata with query rewrite and reranking info
     retrieval_result.retrieval_metadata["query_rewritten"] = rewritten
-    retrieval_result.retrieval_metadata["original_query"] = parsed.original_query
+    retrieval_result.retrieval_metadata["original_query"] = original_query or query
     retrieval_result.retrieval_metadata["retrieval_query"] = retrieval_query
-    retrieval_result.retrieval_metadata["cleaned_query"] = parsed.cleaned_query
-    retrieval_result.retrieval_metadata["page_filter"] = parsed.page
-    retrieval_result.retrieval_metadata["reranker"] = updated_config.reranker
+    retrieval_result.retrieval_metadata["reranker"] = config.reranker
     retrieval_result.retrieval_metadata["reranking_applied"] = reranking_applied
     retrieval_result.retrieval_metadata["candidate_count"] = candidate_count
     retrieval_result.retrieval_metadata["final_count"] = len(retrieval_result.chunks)
@@ -288,10 +267,67 @@ def retrieve_context(
     )
 
     _log_retrieval_details(
-        parsed.original_query,
+        original_query or query,
         retrieval_query,
         retrieval_result.chunks,
         retrieval_result.retrieval_metadata,
     )
 
     return serialized, retrieval_result
+
+
+@tool(response_format="content_and_artifact")
+def retrieve_context(
+    query: str,
+    config: RetrievalConfig = DEFAULT_RETRIEVAL_CONFIG,
+):
+    """Retrieve information to help answer a query.
+
+    Returns a RetrievalResult containing the query and retrieved chunks with scores.
+
+    Supports two modes:
+    - Single-query (default): rewrite -> retrieve -> rerank
+    - Multi-query (when expand_enabled=True): rewrite -> expand -> parallel retrieve -> merge -> rerank
+    """
+    # Parse query for page references and other metadata constraints
+    parsed = parse_query(query)
+
+    # Build combined metadata filter: merge page filter with existing config filter
+    metadata_filter = build_metadata_filter(
+        page=parsed.page,
+        existing_filter=config.metadata_filter,
+    )
+
+    # Create updated config with merged filter and cleaned query
+    updated_config = RetrievalConfig(
+        top_k=config.top_k,
+        search_type=config.search_type,
+        score_threshold=config.score_threshold,
+        fetch_k=config.fetch_k,
+        lambda_mult=config.lambda_mult,
+        metadata_filter=metadata_filter,
+        query_processing=config.query_processing,
+        dense_top_k=config.dense_top_k,
+        bm25_top_k=config.bm25_top_k,
+        final_top_k=config.final_top_k,
+        rrf_k=config.rrf_k,
+        hybrid_enabled=config.hybrid_enabled,
+        reranker=config.reranker,
+        reranker_top_k=config.reranker_top_k,
+    )
+
+    qp_config = updated_config.query_processing
+
+    # Choose path based on expansion config
+    if qp_config.expand_enabled:
+        # Multi-query path via RetrievalPipeline
+        pipeline = create_pipeline_from_config(updated_config)
+        serialized, artifact = pipeline.execute(parsed.cleaned_query, updated_config)
+        return serialized, artifact
+    else:
+        # Single-query path (legacy)
+        return _single_query_retrieve(
+            parsed.cleaned_query,
+            updated_config,
+            original_query=parsed.original_query,
+        )

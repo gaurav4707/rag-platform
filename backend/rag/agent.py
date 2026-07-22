@@ -68,6 +68,13 @@ async def stream_events(question: str) -> AsyncGenerator[tuple[str, object], Non
 
         # Check if LLM wants to call tools
         tool_calls = getattr(response, "tool_calls", None)
+        logger.debug(
+            "LLM response: iteration=%d type=%s content_repr=%r tool_calls=%s",
+            iteration,
+            type(response).__name__,
+            response.content,
+            [tc["name"] for tc in (tool_calls or [])],
+        )
         if not tool_calls:
 # No tool calls - final answer, stream it
             logger.debug("LLM returned final answer (no tool calls)")
@@ -205,15 +212,39 @@ async def _stream_final_answer(
     llm: Any,
 ) -> AsyncGenerator[tuple[str, object], None]:
     """Stream the final answer and yield metadata."""
-    # The answer parameter is already the final answer from the LLM
-    # Just yield it as a message chunk
-    message_chunk = type("MessageChunk", (), {
-        "text": answer,
-    })()
-    yield "messages", message_chunk
+    merged_retrieval = merge_retrieval_results(state.retrieval_results)
+
+    if answer.strip():
+        logger.info(
+            "_stream_final_answer: using LLM answer len=%d repr=%r",
+            len(answer),
+            answer[:200],
+        )
+        message_chunk = type("MessageChunk", (), {"text": answer})()
+        yield "messages", message_chunk
+    else:
+        logger.info("_stream_final_answer: LLM answer empty, generating via prompt")
+        user_question = state.messages[0].content if state.messages else ""
+
+        if isinstance(merged_retrieval, RetrievalResult):
+            prompt = build_prompt(user_question, merged_retrieval)
+        else:
+            tool_results = ""
+            for tc in state.tool_calls:
+                tool_results += f"Tool: {tc['tool_name']}\nInput: {tc['input']}\nResult: {tc['output']}\n\n"
+            prompt = (
+                build_system_prompt()
+                + "\n\nUser Question:\n" + user_question
+                + ("\n\nTool Results:\n" + tool_results if tool_results else "")
+                + "\n\nAnswer:"
+            )
+
+        async for chunk in llm.astream(prompt):
+            if chunk.content:
+                message_chunk = type("MessageChunk", (), {"text": chunk.content})()
+                yield "messages", message_chunk
 
     # Yield final metadata with sources
-    merged_retrieval = merge_retrieval_results(state.retrieval_results)
     if isinstance(merged_retrieval, RetrievalResult):
         sources = build_sources(merged_retrieval)
     else:

@@ -148,11 +148,35 @@ Delivered: Prior
 
 ## Milestone 6 — Advanced Agentic RAG
 
-Planned capabilities focusing on Agent intelligence and autonomy:
+### Sprint 6.1 — Multi-Query Retrieval Pipeline
+
+Delivered: [Current]
+
+#### Added
+
+- **Composable Retrieval Pipeline**: `retrieval_pipeline.py` with configurable stages (RewriteStage, ExpansionStage, RetrievalStage, MergeStage, RerankStage, ResultBuilderStage)
+- **Query Expansion**: `query_expander.py` with `BaseQueryExpander` protocol, `LLMQueryExpander` (generates N diverse queries), `NoOpQueryExpander`, factory `get_query_expander()`
+- **Parallel Retrieval Executor**: `retrieval_executor.py` with `execute_parallel()` (ThreadPoolExecutor), `execute_sequential()`, configurable `max_workers`
+- **QueryProcessingConfig**: Nested config for `rewrite_enabled`, `rewrite_strategy`, `expand_enabled`, `expand_strategy`, `expand_count` with backward-compatible properties
+- **Pipeline Trace Metadata**: Each stage records execution details in `retrieval_metadata["pipeline"]` as an execution trace array
+
+#### Changed
+
+- `retriever.py`: Routes to `RetrievalPipeline` when `expand_enabled=True`, else uses legacy `_single_query_retrieve()` for backward compatibility
+- `retrieval_config.py`: Extended with `QueryProcessingConfig` dataclass, backward-compat properties for `query_rewrite`, `query_rewriting_enabled`, `multi_query_enabled`, `multi_query_count`, `query_expansion_strategy`
+- `retrieve_context` tool patching: Tests now patch `get_query_rewriter` instead of `rewrite_query` (internal implementation change)
+
+#### Added (Tests)
+
+- `test_query_expander.py`: NoOp, LLM, factory, parsing, failure modes
+- `test_retrieval_executor.py`: Parallel/sequential execution, error handling, empty queries
+- `test_retrieval_pipeline.py`: Per-stage unit tests (Rewrite, Expansion, Retrieval, Merge, Rerank, ResultBuilder), full pipeline integration, dependency injection validation
+
+### Planned (Sprint 6.2+)
 
 - **New tools**: summarize_document, search_by_metadata
 - **Agent improvements**: Reflection, planning, multi-step reasoning, reasoning traces
-- **Retrieval**: Multi-query retrieval, parent document retrieval, context compression, adaptive chunking
+- **Retrieval**: Parent document retrieval, context compression, adaptive chunking
 - **Infrastructure**: Multiple LLM/embedding providers, conversation memory, agent observability
 
 ## Milestone 7 — Multimodal Intelligence

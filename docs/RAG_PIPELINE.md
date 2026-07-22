@@ -377,7 +377,14 @@ tool_registry.py / retriever.py
 
 ↓
 
-retriever.py (Strategy Dispatch)
+retrieval_pipeline.py (composable stages)
+    │
+    ├── RewriteStage      (if rewrite_enabled)
+    ├── ExpansionStage    (if expand_enabled)
+    ├── RetrievalStage    (strategy + executor)
+    ├── MergeStage        (dedup across queries)
+    ├── RerankStage       (if reranker != "none")
+    └── ResultBuilderStage
 
 ↓
 
@@ -388,22 +395,37 @@ retrieval_strategies.py
 vector_store.py + bm25.py
 ```
 
+The retrieval tool supports two modes:
+
+- **Single-query** (default): Rewrite → Retrieve → Rerank. Backward compatible.
+- **Multi-query** (when `expand_enabled=True`): Rewrite → Expand → Parallel Retrieve → Merge → Rerank.
+
 Responsibilities
 
 The retrieval tool:
 
 - receives the user query
-- optionally rewrites the query
-- invokes the retriever with a RetrievalConfig
+- parses page references and metadata constraints from the query
+- routes to the appropriate path (single-query or pipeline)
 - returns a RetrievalResult
 
-The retriever:
+The retriever (single-query path):
 
+- optionally rewrites the query via `get_query_rewriter()`
 - selects a retrieval strategy via `get_strategy(search_type)`
 - delegates to the strategy's `retrieve()` method
 - strategies handle vector store and BM25 queries
 - invokes reranker (if enabled) on retrieved chunks
 - returns a RetrievalResult with retrieval_metadata
+
+The Retrieval Pipeline (multi-query path):
+
+- `RewriteStage`: optionally rewrites the query
+- `ExpansionStage`: generates N diverse queries via `QueryExpander`
+- `RetrievalStage`: executes retrieval for all queries via `RetrievalExecutor` (parallel threads)
+- `MergeStage`: flattens, deduplicates, and merges results across queries
+- `RerankStage`: optionally reranks merged results
+- `ResultBuilderStage`: applies final top-k and builds metadata
 
 Example
 
@@ -683,30 +705,37 @@ retrieve_context
 
 ↓
 
-Query Rewriter (if enabled)
-├── Rewrites ambiguous/follow-up queries
-├── Skips already-specific queries
-└── Preserves original + rewritten query
-
-↓
-
-Retriever (Strategy Dispatch)
-├── SimilarityStrategy
-├── MMRStrategy
-├── HybridStrategy
-├── QueryRewriteStrategy (future)
-└── RerankStrategy (future)
-
-↓
-
-Vector Store + BM25
-
-↓
-
-Cross-Encoder Reranker (if enabled)
-├── Computes relevance scores
-├── Reranks candidates
-└── Returns top-K
+┌─────────────────────────────────────────────────┐
+│             RETRIEVAL PIPELINE                   │
+│  (single-query or multi-query)                  │
+│                                                 │
+│  RewriteStage (if rewrite_enabled)              │
+│  ├── Rewrites ambiguous/follow-up queries       │
+│  ├── Skips already-specific queries             │
+│  └── Preserves original + rewritten query       │
+│                                                 │
+│  ExpansionStage (if expand_enabled)             │
+│  ├── Generates N diverse queries                │
+│  └── Uses LLM for multi-query expansion         │
+│                                                 │
+│  RetrievalStage                                 │
+│  ├── Single query → direct retrieval            │
+│  └── Multiple queries → parallel via executor   │
+│                                                 │
+│  MergeStage (multi-query only)                  │
+│  ├── Flattens results from all queries          │
+│  ├── Deduplicates by (doc_id, chunk_index)      │
+│  └── Preserves first/highest-scored occurrence  │
+│                                                 │
+│  RerankStage (if reranker != "none")            │
+│  ├── Cross-encoder relevance scoring            │
+│  └── Reorders by relevance score                │
+│                                                 │
+│  ResultBuilderStage                             │
+│  ├── Applies final top-k                        │
+│  ├── Builds pipeline trace metadata             │
+│  └── Returns RetrievalResult                    │
+└─────────────────────────────────────────────────┘
 
 ↓
 
@@ -740,7 +769,7 @@ Streaming Response
 - Hybrid Search (implemented)
 - Query Rewriting (implemented)
 - Cross-Encoder Reranking (implemented)
-- Multi-query Retrieval (planned)
+- Multi-query Retrieval (implemented)
 - Context Compression (planned)
 - Parent Document Retrieval (planned)
 - Adaptive Chunking (planned)

@@ -235,8 +235,26 @@ class ToolExecutor:
 
     def _build_final_result(self, state: ConversationState, answer: str) -> ChatResult:
         """Build final ChatResult from conversation state."""
-        # Merge all retrieval results for citations
         merged_retrieval = merge_retrieval_results(state.retrieval_results)
+
+        if not answer.strip():
+            logger.info("_build_final_result: LLM answer empty, generating via prompt")
+            question = state.messages[0].content if state.messages else ""
+            if isinstance(merged_retrieval, RetrievalResult):
+                prompt = build_prompt(question, merged_retrieval)
+            else:
+                tool_results = ""
+                for tc in state.tool_calls:
+                    tool_results += f"Tool: {tc['tool_name']}\nInput: {tc['input']}\nResult: {tc['output']}\n\n"
+                prompt = (
+                    build_system_prompt()
+                    + "\n\nUser Question:\n" + question
+                    + ("\n\nTool Results:\n" + tool_results if tool_results else "")
+                    + "\n\nAnswer:"
+                )
+            result = self.llm.invoke(prompt)
+            answer = result.content if isinstance(result.content, str) else str(result.content or "")
+
         if isinstance(merged_retrieval, RetrievalResult):
             sources = build_sources(merged_retrieval)
         else:

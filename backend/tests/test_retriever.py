@@ -20,7 +20,8 @@ import pytest
 from langchain_core.documents import Document
 
 from backend.models.rag_models import RetrievalResult, RetrievedChunk
-from backend.rag.retrieval_config import DEFAULT_RETRIEVAL_CONFIG, RetrievalConfig
+from backend.rag.retrieval_config import DEFAULT_RETRIEVAL_CONFIG, RetrievalConfig, QueryProcessingConfig
+from backend.rag.query_rewriter import QueryRewriteResult
 
 
 # ======================================================================
@@ -99,17 +100,26 @@ class TestRetrievalConfig:
         assert config.score_threshold is None
         assert config.fetch_k == 20
         assert config.lambda_mult == 0.5
-        assert config.query_rewrite == "none"
+        # New config structure
+        assert config.query_processing.rewrite_enabled is True
+        assert config.query_processing.rewrite_strategy == "none"
 
     def test_custom_values(self):
         config = RetrievalConfig(
-            top_k=8, search_type="mmr", fetch_k=40, lambda_mult=0.3, query_rewrite="llm"
+            top_k=8,
+            search_type="mmr",
+            fetch_k=40,
+            lambda_mult=0.3,
+            query_processing=QueryProcessingConfig(
+                rewrite_enabled=True,
+                rewrite_strategy="llm",
+            ),
         )
         assert config.top_k == 8
         assert config.search_type == "mmr"
         assert config.fetch_k == 40
         assert config.lambda_mult == 0.3
-        assert config.query_rewrite == "llm"
+        assert config.query_processing.rewrite_strategy == "llm"
 
     def test_config_is_frozen(self):
         config = RetrievalConfig()
@@ -121,8 +131,12 @@ class TestRetrievalConfig:
         RetrievalConfig(search_type="mmr")
 
     def test_valid_query_rewrite_types(self):
-        RetrievalConfig(query_rewrite="none")
-        RetrievalConfig(query_rewrite="llm")
+        RetrievalConfig(
+            query_processing=QueryProcessingConfig(rewrite_strategy="none")
+        )
+        RetrievalConfig(
+            query_processing=QueryProcessingConfig(rewrite_strategy="llm")
+        )
 
 
 # ======================================================================
@@ -478,7 +492,7 @@ class TestQueryRewriting:
         from backend.rag.retriever import retrieve_context
 
         mock_doc = Document(page_content="test", metadata={"document_id": "1", "chunk_index": 0})
-        config = RetrievalConfig(query_rewrite="none")
+        config = RetrievalConfig(query_processing=QueryProcessingConfig(rewrite_enabled=False))
         with patch("backend.rag.retrieval_strategies.similarity_search_with_scores_filtered") as mock_search:
             with patch("backend.rag.bm25.search", return_value=[]) as mock_bm25:
                 mock_search.return_value = [(mock_doc, 0.5)]
@@ -492,16 +506,24 @@ class TestQueryRewriting:
         from backend.rag.retriever import retrieve_context
 
         mock_doc = Document(page_content="test", metadata={"document_id": "1", "chunk_index": 0})
-        config = RetrievalConfig(query_rewrite="llm")
+        config = RetrievalConfig(
+            query_processing=QueryProcessingConfig(rewrite_enabled=True, rewrite_strategy="llm")
+        )
+        mock_rewriter = MagicMock()
+        mock_rewriter.rewrite.return_value = QueryRewriteResult(
+            original_query="original query",
+            retrieval_query="rewritten query",
+            rewritten=True,
+        )
         with patch("backend.rag.retrieval_strategies.similarity_search_with_scores_filtered") as mock_search:
             with patch("backend.rag.bm25.search", return_value=[]) as mock_bm25:
-                with patch("backend.rag.retriever.rewrite_query", return_value="rewritten query") as mock_rewrite:
+                with patch("backend.rag.retriever.get_query_rewriter", return_value=mock_rewriter):
                     mock_search.return_value = [(mock_doc, 0.5)]
                     serialized, artifact = retrieve_context.func("original query", config=config)
 
         # Verify rewrite was called
-        mock_rewrite.assert_called_once_with("original query", "llm")
-        # Verify retrieval used rewritten query (hybrid_retrieve uses it)
+        mock_rewriter.rewrite.assert_called_once_with("original query")
+        # Verify retrieval used rewritten query
         mock_search.assert_called_once()
         # Verify both queries preserved in result
         assert artifact.original_query == "original query"
@@ -512,10 +534,14 @@ class TestQueryRewriting:
         from backend.rag.retriever import retrieve_context
 
         mock_doc = Document(page_content="test", metadata={"document_id": "1", "chunk_index": 0})
-        config = RetrievalConfig(query_rewrite="llm")
+        config = RetrievalConfig(
+            query_processing=QueryProcessingConfig(rewrite_enabled=True, rewrite_strategy="llm")
+        )
+        mock_rewriter = MagicMock()
+        mock_rewriter.rewrite.side_effect = Exception("LLM failed")
         with patch("backend.rag.retrieval_strategies.similarity_search_with_scores_filtered") as mock_search:
             with patch("backend.rag.bm25.search", return_value=[]) as mock_bm25:
-                with patch("backend.rag.retriever.rewrite_query", side_effect=Exception("LLM failed")):
+                with patch("backend.rag.retriever.get_query_rewriter", return_value=mock_rewriter):
                     mock_search.return_value = [(mock_doc, 0.5)]
                     serialized, artifact = retrieve_context.func("original query", config=config)
 
@@ -528,15 +554,26 @@ class TestQueryRewriting:
         """Test MMR retrieval with mocked LLM rewrite."""
         from backend.rag.retriever import retrieve_context
 
-        config = RetrievalConfig(search_type="mmr", top_k=2, fetch_k=4, query_rewrite="llm")
+        config = RetrievalConfig(
+            search_type="mmr",
+            top_k=2,
+            fetch_k=4,
+            query_processing=QueryProcessingConfig(rewrite_enabled=True, rewrite_strategy="llm"),
+        )
         mock_docs = [
             (Document(page_content="doc1", metadata={"document_id": "1", "chunk_index": 0}), 0.1),
             (Document(page_content="doc2", metadata={"document_id": "2", "chunk_index": 0}), 0.2),
         ]
+        mock_rewriter = MagicMock()
+        mock_rewriter.rewrite.return_value = QueryRewriteResult(
+            original_query="original query",
+            retrieval_query="rewritten query",
+            rewritten=True,
+        )
         with patch("backend.rag.retrieval_strategies.mmr_search_with_scores") as mock_mmr:
             with patch("backend.rag.bm25.search", return_value=[]) as mock_bm25:
-                mock_mmr.return_value = mock_docs
-                with patch("backend.rag.retriever.rewrite_query", return_value="rewritten query"):
+                with patch("backend.rag.retriever.get_query_rewriter", return_value=mock_rewriter):
+                    mock_mmr.return_value = mock_docs
                     serialized, artifact = retrieve_context.func("original query", config=config)
 
         assert artifact.original_query == "original query"

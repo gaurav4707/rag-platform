@@ -1,4 +1,5 @@
 import json
+import logging
 import uuid
 from typing import AsyncGenerator
 
@@ -8,6 +9,8 @@ from fastapi.responses import StreamingResponse
 from backend.models.schemas import ChatRequest, ChatResponse, SourceItem
 from backend.services.rag_service import RAGService
 from backend.utils.performance import StreamPerformanceTracker
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["chat"])
 rag_service = RAGService()
@@ -56,6 +59,8 @@ async def chat_stream(request: ChatRequest, http_request: Request):
                             first_token = False
                         tracker.increment_chunks()
                         yield f"data: {json.dumps({'token': token})}\n\n"
+                    else:
+                        logger.warning("Empty token skipped")
                 elif kind == "tool_calls":
                     tool_name = getattr(item, "tool_name", "")
                     tool_input = getattr(item, "input", None)

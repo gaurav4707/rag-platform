@@ -2619,5 +2619,156 @@ Merge all retrieval results into a single result inside the Retriever. This is t
 
 ---
 
+# ADR-038
+
+## Title
+
+Composable Retrieval Pipeline with Multi-Query Expansion
+
+**Status**
+
+Accepted
+
+### Context
+
+The initial retrieval pipeline was a single linear flow: Query Rewriter → Strategy → Reranker. As the system evolved, adding new stages (query expansion, parallel retrieval, cross-query merging) required modifying the retriever's orchestration logic directly, violating the open/closed principle.
+
+Multi-query retrieval — generating N diverse queries per user question, retrieving for each, merging, and reranking — needed to be added without:
+- Duplicating orchestration logic
+- Breaking the single-query path (backward compatibility)
+- Creating a monolithic retriever
+- Coupling to specific expansion strategies or LLM providers
+
+### Decision
+
+Introduce a **composable Retrieval Pipeline** with the following architecture:
+
+1. **Pipeline Stages**: Each stage is a `PipelineStage` ABC with a single `execute(context) -> context` method. Stages are composed in order and can be skipped based on config.
+
+2. **PipelineContext**: A dataclass that carries state through the pipeline (original query, rewritten query, expanded queries, per-query results, merged results, pipeline trace).
+
+3. **RetrievalPipeline**: Orchestrator that builds stages from config or injected dependencies, executes them in order, and returns the final `(serialized, RetrievalResult)` tuple.
+
+4. **Stages**:
+   - `RewriteStage` (optional) — Rewrites query via `BaseQueryRewriter`
+   - `ExpansionStage` (optional) — Generates N diverse queries via `BaseQueryExpander`
+   - `RetrievalStage` — Executes retrieval for each query via `RetrievalExecutor` (parallel ThreadPool)
+   - `MergeStage` — Flattens and deduplicates results across queries by `(document_id, chunk_index)`
+   - `RerankStage` (optional) — Reranks merged results via `BaseReranker`
+   - `ResultBuilderStage` — Applies final top-k and builds metadata
+
+5. **QueryExpander**: New module with `BaseQueryExpander` protocol, `NoOpQueryExpander`, `LLMQueryExpander`, and factory `get_query_expander()`.
+
+6. **RetrievalExecutor**: New module handling parallel/sequential retrieval, decoupling concurrency from pipeline logic.
+
+7. **RetrievalConfig**: Extended with `QueryProcessingConfig` containing `rewrite_enabled`, `rewrite_strategy`, `expand_enabled`, `expand_strategy`, `expand_count`.
+
+8. **Dual Entry Point in Retriever**: `retrieve_context()` routes to `RetrievalPipeline` when `expand_enabled=True`, else uses legacy `_single_query_retrieve()` for backward compatibility.
+
+**Defaults**: `expand_enabled=False` preserves existing single-query behavior. The pipeline is opt-in.
+
+### Alternatives Considered
+
+#### 1. Extend Single-Query Path
+
+Add multi-query logic directly to `_single_query_retrieve()`. Rejected because it would create a large, conditional-laden function mixing single and multi-query concerns.
+
+#### 2. Separate Multi-Query Retriever
+
+Create a standalone `multi_query_retrieve()` function. Rejected because it duplicates orchestration logic (rewriting, reranking) and creates two diverging code paths.
+
+#### 3. Plugin Architecture
+
+Plugin-based stage loading with dynamic registration. Over-engineered for current needs — 6 fixed stages with config-driven skipping are sufficient.
+
+#### 4. Composite Pattern
+
+Wrap multiple retrievers in a composite. Rejected because the merge/rerank steps are cross-cutting concerns that don't fit cleanly into a composite.
+
+### Consequences
+
+**Advantages:**
+- Composable stages: new stages (context compression, parent document retrieval, adaptive chunking) can be added without modifying existing stages
+- Single-query path unchanged: backward compatible, zero-risk for existing users
+- Parallel retrieval: `RetrievalExecutor` uses `ThreadPoolExecutor` for concurrent per-query retrieval
+- Pipeline trace metadata: each stage records its execution in `retrieval_metadata["pipeline"]`
+- Provider-agnostic: expander and rewriter use the same `BaseQueryExpander`/`BaseQueryRewriter` protocols
+- Dependency injection: stages accept injected dependencies for testability
+- **Defaults preserve single-query behavior** (`expand_enabled=False`)
+
+**Trade-offs:**
+- Additional modules: `retrieval_pipeline.py`, `query_expander.py`, `retrieval_executor.py`
+- Slightly more complex routing in `retriever.py` (config check + dispatch)
+- Backward compat properties on `QueryProcessingConfig` needed for existing code
+- `RetrievalExecutor` has a fixed `max_workers` (default 3) — may need tuning
+
+These trade-offs are acceptable because:
+- The pipeline is composable, so it's extensible without breaking changes
+- The single-query path is completely unchanged
+- Default config preserves existing behavior
+- Pipeline trace metadata aids debugging and observability
+
+### Revisit When
+
+- Context compression or parent document retrieval stages need to be added
+- Pipeline stage ordering needs to be configurable (not fixed)
+- Dynamic stage registration (plugins) is needed for third-party extensions
+- `max_workers` tuning becomes critical for large-scale deployments
+
+---
+
+# ADR-039
+
+## Title
+
+Self-Contained Query Processing Config
+
+**Status**
+
+Accepted
+
+### Context
+
+The initial `RetrievalConfig` had query rewrite configuration as top-level fields (`query_rewrite`, `query_rewriting_enabled`). As multi-query expansion was introduced, it became clear that query processing concerns were multiplying: rewrite enable/disable, rewrite strategy, expand enable/disable, expand strategy, expand count. Flat fields would clutter the config and make grouping unclear.
+
+### Decision
+
+Consolidate all query processing configuration into a nested `QueryProcessingConfig` dataclass within `RetrievalConfig`:
+
+```python
+@dataclass(frozen=True)
+class QueryProcessingConfig:
+    rewrite_enabled: bool = True
+    rewrite_strategy: str = "none"
+    expand_enabled: bool = False
+    expand_strategy: str = "none"
+    expand_count: int = 3
+```
+
+Backward-compatible properties on `RetrievalConfig` (`query_rewrite`, `query_rewriting_enabled`, `multi_query_enabled`, `multi_query_count`, `query_expansion_strategy`) map to the nested config.
+
+### Alternatives Considered
+
+#### 1. Keep Flat Fields
+
+Simplify access but clutter `RetrievalConfig` with 5+ query-processing fields alongside retrieval, reranking, and hybrid fields.
+
+#### 2. Separate QueryProcessingConfig but No Backward Compat Properties
+
+Cleaner but would break existing code referencing `config.query_rewrite` or `config.query_rewriting_enabled`.
+
+### Consequences
+
+**Advantages:**
+- Clean grouping of related configuration
+- Easy to add new query-processing fields without cluttering top-level config
+- Backward compatible through properties
+
+**Trade-offs:**
+- Slightly more verbose construction: `RetrievalConfig(query_processing=QueryProcessingConfig(...))`
+- Properties add indirection
+
+---
+
 # Decision Guidelines
 
