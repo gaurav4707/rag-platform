@@ -70,6 +70,15 @@ PARENT_STORAGE_DIR = STORAGE_DIR / "parents"
 TOP_K = 4
 
 # -----------------------------------------------------------------------------
+# Chunking
+# -----------------------------------------------------------------------------
+
+CHUNKING_STRATEGY = "fixed"  # "fixed" | "adaptive"
+CHUNKING_SCOPE = "page"  # "page" | "document" (document is future)
+ADAPTIVE_MIN_CHUNK_SIZE = 200
+ADAPTIVE_MAX_CHUNK_SIZE = 1500
+
+# -----------------------------------------------------------------------------
 # Agent Tool Execution Safety Limits
 # -----------------------------------------------------------------------------
 

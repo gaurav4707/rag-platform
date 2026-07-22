@@ -443,3 +443,21 @@ class TestChunkingPipeline:
         result = pipeline.execute(docs)
         assert result.metrics.chunk_count > 0
         assert result.metrics.duration_ms > 0
+
+
+from backend.config import (
+    CHUNKING_STRATEGY, CHUNKING_SCOPE,
+    ADAPTIVE_MIN_CHUNK_SIZE, ADAPTIVE_MAX_CHUNK_SIZE,
+)
+
+
+class TestConfigConstants:
+    def test_chunking_strategy_default(self):
+        assert CHUNKING_STRATEGY == "fixed"
+
+    def test_chunking_scope_default(self):
+        assert CHUNKING_SCOPE == "page"
+
+    def test_adaptive_defaults(self):
+        assert ADAPTIVE_MIN_CHUNK_SIZE == 200
+        assert ADAPTIVE_MAX_CHUNK_SIZE == 1500
