@@ -59,6 +59,10 @@ LLM_MAX_RETRIES = 2
 CHUNK_SIZE = 1000
 CHUNK_OVERLAP = 200
 
+PARENT_CHUNK_SIZE = 4000
+PARENT_CHUNK_OVERLAP = 200
+PARENT_STORAGE_DIR = STORAGE_DIR / "parents"
+
 # -----------------------------------------------------------------------------
 # Retrieval
 # -----------------------------------------------------------------------------

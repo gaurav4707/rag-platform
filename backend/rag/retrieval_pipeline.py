@@ -40,6 +40,9 @@ from backend.rag.query_expander import BaseQueryExpander, get_query_expander
 from backend.rag.retrieval_strategies import RetrievalStrategy, get_strategy
 from backend.rag.reranker import BaseReranker, get_reranker
 from backend.rag.retrieval_executor import RetrievalExecutor
+from backend.rag.parent_retrieval import resolve_parents, get_parent_retrieval_metadata
+from backend.storage.parent_store import BaseParentStore, FileParentStore
+from backend.config import PARENT_STORAGE_DIR
 from backend.models.rag_models import RetrievalResult, RetrievedChunk
 
 logger = logging.getLogger(__name__)
@@ -59,6 +62,7 @@ class PipelineContext:
     # Retrieval outputs
     retrieved_chunks_per_query: list[list[RetrievedChunk]] = field(default_factory=list)
     merged_chunks: list[RetrievedChunk] = field(default_factory=list)
+    parent_chunks: list[RetrievedChunk] = field(default_factory=list)
     reranked_chunks: list[RetrievedChunk] = field(default_factory=list)
     final_chunks: list[RetrievedChunk] = field(default_factory=list)
 
@@ -251,6 +255,42 @@ class MergeStage(PipelineStage):
         return context
 
 
+class ParentRetrievalStage(PipelineStage):
+    """Resolves child chunks to parent blocks."""
+
+    def __init__(self, parent_store: BaseParentStore | None = None):
+        self.parent_store = parent_store or FileParentStore(PARENT_STORAGE_DIR)
+
+    @property
+    def name(self) -> str:
+        return "parent_retrieval"
+
+    def execute(self, context: PipelineContext) -> PipelineContext:
+        if not context.config.parent_retrieval_enabled or not context.merged_chunks:
+            context.parent_chunks = context.merged_chunks
+            context.pipeline_trace.append({"stage": "parent_retrieval", "skipped": True})
+            return context
+
+        try:
+            resolved = resolve_parents(context.merged_chunks, self.parent_store)
+            context.parent_chunks = resolved
+            meta = get_parent_retrieval_metadata(context.merged_chunks, resolved)
+            context.pipeline_trace.append({
+                "stage": "parent_retrieval",
+                **meta,
+            })
+        except Exception as e:
+            logger.warning("Parent retrieval failed: %s", e)
+            context.parent_chunks = context.merged_chunks
+            context.pipeline_trace.append({
+                "stage": "parent_retrieval",
+                "error": str(e),
+                "fallback": True,
+            })
+
+        return context
+
+
 class RerankStage(PipelineStage):
     """Reranking stage."""
 
@@ -262,8 +302,12 @@ class RerankStage(PipelineStage):
         return "reranking"
 
     def execute(self, context: PipelineContext) -> PipelineContext:
-        if context.config.reranker == "none" or not context.merged_chunks:
-            context.reranked_chunks = context.merged_chunks
+        candidates = context.parent_chunks if context.config.parent_retrieval_enabled else context.merged_chunks
+        if not candidates:
+            candidates = context.merged_chunks
+
+        if context.config.reranker == "none" or not candidates:
+            context.reranked_chunks = candidates
             context.pipeline_trace.append({"stage": "reranking", "skipped": True})
             return context
 
@@ -271,18 +315,18 @@ class RerankStage(PipelineStage):
         primary_query = context.rewritten_query or context.original_query
 
         try:
-            reranked = self.reranker.rerank(primary_query, context.merged_chunks)
+            reranked = self.reranker.rerank(primary_query, candidates)
             context.reranked_chunks = reranked
 
             context.pipeline_trace.append({
                 "stage": "reranking",
                 "reranker": context.config.reranker,
-                "candidates_before": len(context.merged_chunks),
+                "candidates_before": len(candidates),
                 "candidates_after": len(reranked),
             })
         except Exception as e:
             logger.warning("Reranking failed: %s", e)
-            context.reranked_chunks = context.merged_chunks
+            context.reranked_chunks = candidates
             context.pipeline_trace.append({
                 "stage": "reranking",
                 "error": str(e),
@@ -342,12 +386,22 @@ class ResultBuilderStage(PipelineStage):
             },
         ])
 
+        if context.config.parent_retrieval_enabled:
+            candidates_before = len(context.merged_chunks)
+            candidates_after = len(context.parent_chunks) if context.parent_chunks else len(context.merged_chunks)
+            pipeline_trace.append({
+                "stage": "parent_retrieval",
+                "candidates_before": candidates_before,
+                "candidates_after": candidates_after,
+            })
+
         if context.config.reranker != "none":
+            rerank_candidates = len(context.parent_chunks) if context.config.parent_retrieval_enabled else len(context.merged_chunks)
             pipeline_trace.append({
                 "stage": "reranking",
                 "reranker": context.config.reranker,
-                "candidates_before": len(context.merged_chunks),
-                "candidates_after": len(context.reranked_chunks) if context.reranked_chunks else len(context.merged_chunks),
+                "candidates_before": rerank_candidates,
+                "candidates_after": len(context.reranked_chunks) if context.reranked_chunks else rerank_candidates,
             })
 
         pipeline_trace.append({
@@ -403,11 +457,13 @@ class RetrievalPipeline:
         strategy = self._strategy or get_strategy(config.search_type, config.hybrid_enabled)
         reranker = self._reranker or get_reranker(config.reranker)
 
+        parent_store = FileParentStore(PARENT_STORAGE_DIR)
         self._stages = [
             RewriteStage(rewriter),
             ExpansionStage(expander),
             RetrievalStage(strategy, self._executor),
             MergeStage(),
+            ParentRetrievalStage(parent_store),
             RerankStage(reranker),
             ResultBuilderStage(),
         ]
@@ -447,6 +503,7 @@ class RetrievalPipeline:
                 "config": {
                     "search_type": config.search_type,
                     "reranker": config.reranker,
+                    "parent_retrieval_enabled": config.parent_retrieval_enabled,
                     "expand_enabled": qp_config.expand_enabled,
                     "expand_strategy": qp_config.expand_strategy,
                     "expand_count": qp_config.expand_count,

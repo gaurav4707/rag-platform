@@ -172,11 +172,35 @@ Delivered: [Current]
 - `test_retrieval_executor.py`: Parallel/sequential execution, error handling, empty queries
 - `test_retrieval_pipeline.py`: Per-stage unit tests (Rewrite, Expansion, Retrieval, Merge, Rerank, ResultBuilder), full pipeline integration, dependency injection validation
 
-### Planned (Sprint 6.2+)
+### Sprint 6.2 — Parent Document Retrieval
+
+Delivered: [Current]
+
+#### Added
+
+- **BaseParentStore + FileParentStore**: `storage/parent_store.py` — abstract parent storage protocol + JSON-backed implementation with LRU cache
+- **HierarchicalSplitter**: `rag/splitter.py` — two-stage splitter (parent → child) with `HierarchicalSplitResult` dataclass
+- **ParentRetrievalStage**: `rag/retrieval_pipeline.py` — resolves child chunks to parent blocks, injected between MergeStage and RerankStage
+- **resolve_parents()**: `rag/parent_retrieval.py` — child-to-parent mapping with dedup (max score per parent), fallback when parent missing
+- **Parent retrieval metadata**: `get_parent_retrieval_metadata()` reports child_chunks_found, unique_parents, merged_children, average_children_per_parent
+- **RetrievalConfig.parent_retrieval_enabled**: Toggle (default True), wired into pipeline execution
+- **Flat metadata support**: Child chunks store parent reference as flat fields (`parent_id`, `parent_page_range_start`, `parent_page_range_end`, `parent_child_index`) for ChromaDB compatibility
+
+#### Changed
+
+- `document_service.py`: Uses `HierarchicalSplitter` during indexing, stores parent blocks via `FileParentStore`, cleans up on rollback
+- `RerankStage`: Reranks `context.parent_chunks` when `parent_retrieval_enabled=True`, else `context.merged_chunks` (backward compatible)
+- `retriever.py`: Single-query path injects parent retrieval after reranking when enabled
+
+#### Added (Tests)
+
+- `test_parent_retrieval.py`: 39 tests covering store (9), splitter (5), resolver (10), metadata (3), stage (5), pipeline integration (7)
+
+### Planned (Sprint 6.3+)
 
 - **New tools**: summarize_document, search_by_metadata
 - **Agent improvements**: Reflection, planning, multi-step reasoning, reasoning traces
-- **Retrieval**: Parent document retrieval, context compression, adaptive chunking
+- **Retrieval**: Context compression, adaptive chunking
 - **Infrastructure**: Multiple LLM/embedding providers, conversation memory, agent observability
 
 ## Milestone 7 — Multimodal Intelligence

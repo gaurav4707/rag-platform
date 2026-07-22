@@ -17,6 +17,9 @@ from backend.rag.retrieval_strategies import get_strategy
 from backend.rag.reranker import get_reranker
 from backend.rag.query_parser import parse_query, build_metadata_filter
 from backend.rag.retrieval_pipeline import RetrievalPipeline, create_pipeline_from_config
+from backend.rag.parent_retrieval import resolve_parents, get_parent_retrieval_metadata
+from backend.storage.parent_store import FileParentStore
+from backend.config import PARENT_STORAGE_DIR
 from backend.models.rag_models import RetrievalResult, RetrievedChunk
 
 import logging
@@ -248,6 +251,21 @@ def _single_query_retrieve(
         # Still apply final top-k for consistency
         retrieval_result.chunks = retrieval_result.chunks[: config.reranker_top_k]
 
+    # Parent retrieval: resolve child chunks to parent blocks
+    if config.parent_retrieval_enabled and retrieval_result.chunks:
+        try:
+            parent_store = FileParentStore(PARENT_STORAGE_DIR)
+            resolved = resolve_parents(retrieval_result.chunks, parent_store)
+            parent_meta = get_parent_retrieval_metadata(retrieval_result.chunks, resolved)
+            retrieval_result.chunks = resolved
+            retrieval_result.retrieval_metadata["parent_retrieval"] = parent_meta
+        except Exception as e:
+            logger.warning("Parent retrieval failed in single-query path: %s", e)
+            retrieval_result.retrieval_metadata["parent_retrieval"] = {
+                "error": str(e),
+                "fallback": True,
+            }
+
     # Update retrieval metadata with query rewrite and reranking info
     retrieval_result.retrieval_metadata["query_rewritten"] = rewritten
     retrieval_result.retrieval_metadata["original_query"] = original_query or query
@@ -312,6 +330,7 @@ def retrieve_context(
         final_top_k=config.final_top_k,
         rrf_k=config.rrf_k,
         hybrid_enabled=config.hybrid_enabled,
+        parent_retrieval_enabled=config.parent_retrieval_enabled,
         reranker=config.reranker,
         reranker_top_k=config.reranker_top_k,
     )

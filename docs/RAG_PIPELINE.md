@@ -33,7 +33,11 @@ Metadata Enrichment
 
 ↓
 
-Splitter
+Hierarchical Splitter
+├── Parent splitter (large chunks, default 4000 tokens)
+├── Child splitter (small chunks, default 1000 tokens)
+├── Parent blocks → FileParentStore (JSON, Step 4a)
+└── Child chunks + flat parent metadata
 
 ↓
 
@@ -199,7 +203,7 @@ Metadata is preserved throughout the pipeline.
 
 ---
 
-## Step 4 — Split Document
+## Step 4 — Hierarchical Split Document
 
 Module
 
@@ -209,15 +213,45 @@ splitter.py
 
 Responsibilities
 
-- Split text
-- Preserve overlap
-- Preserve metadata
-- Assign chunk_index
+- Split text at two levels: parent (large) and child (small)
+- Preserve overlap at both levels
+- Preserve metadata on child chunks
+- Assign chunk_index and parent reference fields (`parent_id`, `parent_page_range_start`, `parent_page_range_end`, `parent_child_index`)
+- Delegate parent blocks to `FileParentStore` for storage
+
+Output (for children)
+
+```
+List[Document]   (with flat parent reference metadata)
+```
+
+Output (for parents)
+
+```
+List[ParentBlock]   (stored in JSON, not ChromaDB)
+```
+
+---
+
+## Step 4a — Store Parent Blocks
+
+Module
+
+```
+storage/parent_store.py
+```
+
+Responsibilities
+
+- Persist parent blocks as JSON files
+- Provide LRU-cached load by document_id + parent_id
+- Support delete on document removal
+- Storage-agnostic interface via `BaseParentStore` protocol
 
 Output
 
 ```
-List[Document]
+storage/parents/{document_id}.json
 ```
 
 ---
@@ -416,6 +450,7 @@ The retriever (single-query path):
 - delegates to the strategy's `retrieve()` method
 - strategies handle vector store and BM25 queries
 - invokes reranker (if enabled) on retrieved chunks
+- injects parent document retrieval after reranking (if `parent_retrieval_enabled`), replacing child chunks with parent blocks
 - returns a RetrievalResult with retrieval_metadata
 
 The Retrieval Pipeline (multi-query path):
@@ -424,7 +459,8 @@ The Retrieval Pipeline (multi-query path):
 - `ExpansionStage`: generates N diverse queries via `QueryExpander`
 - `RetrievalStage`: executes retrieval for all queries via `RetrievalExecutor` (parallel threads)
 - `MergeStage`: flattens, deduplicates, and merges results across queries
-- `RerankStage`: optionally reranks merged results
+- `ParentRetrievalStage`: resolves child chunks to parent blocks (if `parent_retrieval_enabled`)
+- `RerankStage`: optionally reranks merged/parent results
 - `ResultBuilderStage`: applies final top-k and builds metadata
 
 Example
@@ -727,8 +763,15 @@ retrieve_context
 │  ├── Deduplicates by (doc_id, chunk_index)      │
 │  └── Preserves first/highest-scored occurrence  │
 │                                                 │
+│  ParentRetrievalStage (if parent_retrieval)     │
+│  ├── Resolves child chunks to parent blocks     │
+│  ├── Deduplicates by parent_id (keeps max score)│
+│  ├── Falls back to child when parent missing    │
+│  └── Attaches metadata to pipeline trace        │
+│                                                 │
 │  RerankStage (if reranker != "none")            │
 │  ├── Cross-encoder relevance scoring            │
+│  │   (on parent chunks if parent_retrieval)     │
 │  └── Reorders by relevance score                │
 │                                                 │
 │  ResultBuilderStage                             │
@@ -771,7 +814,7 @@ Streaming Response
 - Cross-Encoder Reranking (implemented)
 - Multi-query Retrieval (implemented)
 - Context Compression (planned)
-- Parent Document Retrieval (planned)
+- Parent Document Retrieval (implemented, Sprint 6.2)
 - Adaptive Chunking (planned)
 
 ---

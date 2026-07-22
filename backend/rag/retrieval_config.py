@@ -44,6 +44,11 @@ class RetrievalConfig:
     # Query processing (rewrite + expand)
     query_processing: QueryProcessingConfig = field(default_factory=QueryProcessingConfig)
 
+    # Parent retrieval settings
+    parent_retrieval_enabled: bool = True
+    parent_target_size: int = 4000
+    parent_overlap: int = 200
+
     # Reranking settings
     reranker: Literal["none", "cross_encoder"] = "cross_encoder"
     reranker_top_k: int = 6

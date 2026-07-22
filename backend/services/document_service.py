@@ -1,9 +1,10 @@
 import hashlib
 import uuid
 
-from backend.config import UPLOAD_DIR
+from backend.config import PARENT_STORAGE_DIR, UPLOAD_DIR
 from backend.rag.loader import load_pdf
-from backend.rag.splitter import text_splitter
+from backend.rag.splitter import HierarchicalSplitter
+from backend.storage.parent_store import FileParentStore, ParentBlock
 from backend.rag.vector_store import (
     add_documents,
     delete_document as delete_vector_document,
@@ -13,6 +14,8 @@ from backend.rag.vector_store import (
 )
 from backend.rag.bm25 import rebuild as rebuild_bm25_index, refresh as refresh_bm25_index, invalidate as invalidate_bm25_index
 from backend.api.errors import AppError, ERROR_CODES, status
+
+_parent_store = FileParentStore(PARENT_STORAGE_DIR)
 
 
 def _compute_file_hash(file_content: bytes) -> str:
@@ -71,12 +74,26 @@ def process_upload(file_content: bytes, original_filename: str) -> dict:
             doc.metadata["filename"] = original_filename
             doc.metadata["file_hash"] = file_hash
 
-        splits = text_splitter.split_documents(docs)
+        splitter = HierarchicalSplitter(
+            document_id=document_id,
+            filename=original_filename,
+            file_hash=file_hash,
+        )
+        split_result = splitter.split(docs)
 
-        for i, split in enumerate(splits):
-            split.metadata["chunk_index"] = i
+        parent_blocks = [
+            ParentBlock(
+                parent_id=p.metadata["parent_id"],
+                content=p.page_content,
+                start_page=p.metadata.get("page"),
+                end_page=p.metadata.get("page"),
+                metadata=dict(p.metadata),
+            )
+            for p in split_result.parent_blocks
+        ]
+        _parent_store.store_parents(document_id, parent_blocks)
 
-        add_documents(splits)
+        add_documents(split_result.child_chunks)
 
         # Rebuild BM25 index with all documents
         try:
@@ -93,6 +110,7 @@ def process_upload(file_content: bytes, original_filename: str) -> dict:
             delete_vector_document(document_id)
         except Exception:
             pass
+        _parent_store.delete_parents(document_id)
         raise
     except Exception:
         if saved_path.exists():
@@ -101,6 +119,7 @@ def process_upload(file_content: bytes, original_filename: str) -> dict:
             delete_vector_document(document_id)
         except Exception:
             pass
+        _parent_store.delete_parents(document_id)
         raise AppError(
             ERROR_CODES["INDEXING_FAILED"],
             "Document indexing failed.",
@@ -155,6 +174,8 @@ def delete_document(document_id: str) -> None:
         rebuild_bm25_index(all_docs)
     except Exception as e:
         print(f"Warning: BM25 index rebuild failed after deletion: {e}")
+
+    _parent_store.delete_parents(document_id)
 
     saved_path = UPLOAD_DIR / f"{document_id}.pdf"
     if saved_path.exists():
