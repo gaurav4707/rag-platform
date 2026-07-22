@@ -265,3 +265,69 @@ class TestBoundaryDetector:
         doc = Document(page_content="# Title\n\nParagraph.", metadata={})
         boundaries = detector.detect(doc)
         assert boundaries == []
+
+
+from backend.rag.chunking import ChunkAssembler
+
+
+class TestChunkAssembler:
+    def test_splits_at_boundaries(self):
+        assembler = ChunkAssembler(min_size=10, max_size=100)
+        text = "First section.\n\nSecond section.\n\nThird section."
+        boundaries = [
+            Boundary(position=15, priority=3, label="paragraph"),
+            Boundary(position=32, priority=3, label="paragraph"),
+        ]
+        chunks = assembler.assemble(text, boundaries)
+        assert len(chunks) == 3
+        assert chunks[0].page_content == "First section."
+        assert chunks[1].page_content == "Second section."
+        assert chunks[2].page_content == "Third section."
+
+    def test_merges_small_chunks(self):
+        assembler = ChunkAssembler(min_size=20, max_size=100)
+        text = "Hi.\n\nThis is a longer paragraph with more content."
+        boundaries = [
+            Boundary(position=3, priority=3, label="paragraph"),
+        ]
+        chunks = assembler.assemble(text, boundaries)
+        # "Hi." is only 3 chars, should merge with next
+        assert len(chunks) == 1
+        assert "Hi." in chunks[0].page_content
+
+    def test_splits_large_chunks(self):
+        assembler = ChunkAssembler(min_size=5, max_size=20)
+        text = "Short. " * 10  # 70 chars
+        boundaries = [
+            Boundary(position=7, priority=5, label="sentence"),
+            Boundary(position=14, priority=5, label="sentence"),
+            Boundary(position=21, priority=5, label="sentence"),
+            Boundary(position=28, priority=5, label="sentence"),
+            Boundary(position=35, priority=5, label="sentence"),
+            Boundary(position=42, priority=5, label="sentence"),
+            Boundary(position=49, priority=5, label="sentence"),
+            Boundary(position=56, priority=5, label="sentence"),
+            Boundary(position=63, priority=5, label="sentence"),
+        ]
+        chunks = assembler.assemble(text, boundaries)
+        for chunk in chunks:
+            assert len(chunk.page_content) <= 25  # some tolerance
+
+    def test_no_boundaries_returns_whole_text(self):
+        assembler = ChunkAssembler(min_size=10, max_size=100)
+        text = "Just one chunk of text."
+        chunks = assembler.assemble(text, [])
+        assert len(chunks) == 1
+        assert chunks[0].page_content == text
+
+    def test_output_is_exact_substring(self):
+        """ChunkAssembler never invents content."""
+        assembler = ChunkAssembler(min_size=5, max_size=50)
+        text = "Alpha bravo charlie delta echo foxtrot golf hotel."
+        boundaries = [
+            Boundary(position=14, priority=3, label="paragraph"),
+            Boundary(position=28, priority=3, label="paragraph"),
+        ]
+        chunks = assembler.assemble(text, boundaries)
+        for chunk in chunks:
+            assert chunk.page_content in text

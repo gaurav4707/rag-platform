@@ -195,3 +195,74 @@ class BoundaryDetector:
             deduplicated.append(b)
 
         return deduplicated
+
+
+class ChunkAssembler:
+    """Builds chunks from boundary positions.
+
+    Invariant: Every output chunk is an exact substring of the original input.
+    ChunkAssembler never invents content.
+    """
+
+    def __init__(self, min_size: int, max_size: int):
+        self._min_size = min_size
+        self._max_size = max_size
+
+    def assemble(self, text: str, boundaries: list[Boundary]) -> list[Document]:
+        if not boundaries:
+            return [Document(page_content=text, metadata={"start_index": 0})]
+
+        # Build split points: start of text + boundary positions + end of text
+        split_points = [0] + [b.position for b in boundaries] + [len(text)]
+
+        # Build initial chunks from split points
+        raw_chunks: list[str] = []
+        for i in range(len(split_points) - 1):
+            start, end = split_points[i], split_points[i + 1]
+            chunk_text = text[start:end].strip()
+            if chunk_text:
+                raw_chunks.append(chunk_text)
+
+        if not raw_chunks:
+            return [Document(page_content=text, metadata={"start_index": 0})]
+
+        # Merge small chunks
+        merged: list[str] = [raw_chunks[0]]
+        for chunk_text in raw_chunks[1:]:
+            if len(merged[-1]) < self._min_size:
+                merged[-1] = merged[-1] + "\n\n" + chunk_text
+            else:
+                merged.append(chunk_text)
+
+        # Split large chunks (at the last newline or space within max_size)
+        final_chunks: list[str] = []
+        for chunk_text in merged:
+            if len(chunk_text) <= self._max_size:
+                final_chunks.append(chunk_text)
+            else:
+                # Find a good split point within max_size
+                split_at = chunk_text.rfind("\n\n", 0, self._max_size)
+                if split_at == -1:
+                    split_at = chunk_text.rfind(". ", 0, self._max_size)
+                if split_at == -1:
+                    split_at = chunk_text.rfind(" ", 0, self._max_size)
+                if split_at <= 0:
+                    split_at = self._max_size
+                else:
+                    split_at += 1  # include the separator
+                final_chunks.append(chunk_text[:split_at].strip())
+                remaining = chunk_text[split_at:].strip()
+                if remaining:
+                    final_chunks.append(remaining)
+
+        # Compute start_index for each chunk
+        result: list[Document] = []
+        search_start = 0
+        for chunk_text in final_chunks:
+            pos = text.find(chunk_text, search_start)
+            if pos == -1:
+                pos = search_start
+            result.append(Document(page_content=chunk_text, metadata={"start_index": pos}))
+            search_start = pos + len(chunk_text)
+
+        return result
