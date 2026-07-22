@@ -331,3 +331,76 @@ class TestChunkAssembler:
         chunks = assembler.assemble(text, boundaries)
         for chunk in chunks:
             assert chunk.page_content in text
+
+
+from backend.rag.chunking import AdaptiveChunkingStrategy
+
+
+class TestAdaptiveChunkingStrategy:
+    def test_heading_preserved(self):
+        strategy = AdaptiveChunkingStrategy(min_chunk_size=50, max_chunk_size=500)
+        doc = Document(
+            page_content="# Introduction\n\n" + "Content here. " * 20 + "\n\n# Methods\n\n" + "Methods content. " * 20,
+            metadata={"page": 0},
+        )
+        result = strategy.split([doc])
+        assert result.success is True
+        texts = [c.page_content for c in result.chunks]
+        assert any("# Introduction" in t for t in texts)
+        assert any("# Methods" in t for t in texts)
+
+    def test_paragraph_preserved(self):
+        strategy = AdaptiveChunkingStrategy(min_chunk_size=20, max_chunk_size=500)
+        doc = Document(
+            page_content="First paragraph with enough content to be meaningful.\n\nSecond paragraph with enough content to be meaningful.",
+            metadata={"page": 0},
+        )
+        result = strategy.split([doc])
+        assert result.success is True
+        assert result.metrics.chunk_count >= 2
+
+    def test_fallback_when_no_boundaries(self):
+        from backend.rag.chunking import FixedChunkingStrategy
+        fallback = FixedChunkingStrategy(chunk_size=500, chunk_overlap=50)
+        strategy = AdaptiveChunkingStrategy(
+            min_chunk_size=50, max_chunk_size=500, fallback_strategy=fallback,
+        )
+        doc = Document(page_content="Hello", metadata={"page": 0})
+        result = strategy.split([doc])
+        assert result.success is True
+        assert result.metrics.fallback_used is True
+        assert result.metrics.chunk_count == 1
+
+    def test_deterministic(self):
+        strategy = AdaptiveChunkingStrategy(min_chunk_size=50, max_chunk_size=500)
+        doc = Document(
+            page_content="# Title\n\nParagraph one.\n\nParagraph two.",
+            metadata={"page": 0},
+        )
+        result1 = strategy.split([doc])
+        result2 = strategy.split([doc])
+        assert len(result1.chunks) == len(result2.chunks)
+        for c1, c2 in zip(result1.chunks, result2.chunks):
+            assert c1.page_content == c2.page_content
+
+    def test_metrics_populated(self):
+        strategy = AdaptiveChunkingStrategy(min_chunk_size=50, max_chunk_size=500)
+        doc = Document(
+            page_content="# Heading\n\n" + "Content. " * 30,
+            metadata={"page": 0},
+        )
+        result = strategy.split([doc])
+        assert result.metrics.strategy == "adaptive"
+        assert result.metrics.chunk_count > 0
+        assert result.metrics.duration_ms > 0
+        assert result.metrics.average_chunk_size > 0
+
+    def test_respects_min_max_size(self):
+        strategy = AdaptiveChunkingStrategy(min_chunk_size=30, max_chunk_size=100)
+        doc = Document(
+            page_content="# Title\n\n" + "Word " * 50 + "\n\n# Section2\n\n" + "Text " * 50,
+            metadata={"page": 0},
+        )
+        result = strategy.split([doc])
+        for chunk in result.chunks:
+            assert len(chunk.page_content) <= 120

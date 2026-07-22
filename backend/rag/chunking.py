@@ -236,11 +236,12 @@ class ChunkAssembler:
 
         # Split large chunks (at the last newline or space within max_size)
         final_chunks: list[str] = []
-        for chunk_text in merged:
+        queue = list(merged)
+        while queue:
+            chunk_text = queue.pop(0)
             if len(chunk_text) <= self._max_size:
                 final_chunks.append(chunk_text)
             else:
-                # Find a good split point within max_size
                 split_at = chunk_text.rfind("\n\n", 0, self._max_size)
                 if split_at == -1:
                     split_at = chunk_text.rfind(". ", 0, self._max_size)
@@ -249,11 +250,11 @@ class ChunkAssembler:
                 if split_at <= 0:
                     split_at = self._max_size
                 else:
-                    split_at += 1  # include the separator
+                    split_at += 1
                 final_chunks.append(chunk_text[:split_at].strip())
                 remaining = chunk_text[split_at:].strip()
                 if remaining:
-                    final_chunks.append(remaining)
+                    queue.append(remaining)
 
         # Compute start_index for each chunk
         result: list[Document] = []
@@ -266,3 +267,77 @@ class ChunkAssembler:
             search_start = pos + len(chunk_text)
 
         return result
+
+
+class AdaptiveChunkingStrategy:
+    """Splits text using structural boundaries, reports success/failure.
+
+    Uses BoundaryDetector to find split points and ChunkAssembler to build chunks.
+    If no useful boundaries are found, reports success=False so the pipeline
+    can invoke a fallback strategy.
+    """
+
+    def __init__(
+        self,
+        min_chunk_size: int,
+        max_chunk_size: int,
+        fallback_strategy: BaseChunkingStrategy | None = None,
+        detector: BoundaryDetector | None = None,
+        assembler: ChunkAssembler | None = None,
+    ):
+        self._min_size = min_chunk_size
+        self._max_size = max_chunk_size
+        self._fallback = fallback_strategy
+        self._detector = detector or BoundaryDetector()
+        self._assembler = assembler or ChunkAssembler(min_chunk_size, max_chunk_size)
+
+    def split(self, documents: Sequence[Document]) -> ChunkingResult:
+        start = time.perf_counter()
+        all_chunks: list[Document] = []
+        total_boundary_hits = 0
+
+        for doc in documents:
+            boundaries = self._detector.detect(doc)
+            total_boundary_hits += len(boundaries)
+
+            if not boundaries:
+                if self._fallback:
+                    duration_ms = (time.perf_counter() - start) * 1000
+                    fallback_result = self._fallback.split([doc])
+                    fallback_result.metrics.strategy = "adaptive"
+                    fallback_result.metrics.fallback_used = True
+                    fallback_result.metrics.duration_ms = duration_ms
+                    return fallback_result
+                # No boundaries and no fallback — cannot produce adaptive chunks
+                duration_ms = (time.perf_counter() - start) * 1000
+                return ChunkingResult(
+                    chunks=[],
+                    success=False,
+                    metrics=ChunkingMetrics(
+                        chunk_count=0,
+                        boundary_hits=0,
+                        strategy="adaptive",
+                        duration_ms=duration_ms,
+                    ),
+                )
+
+            chunks = self._assembler.assemble(doc.page_content, boundaries)
+            # Propagate page metadata from parent
+            for chunk in chunks:
+                chunk.metadata["page"] = doc.metadata.get("page")
+            all_chunks.extend(chunks)
+
+        duration_ms = (time.perf_counter() - start) * 1000
+        sizes = [len(c.page_content) for c in all_chunks]
+
+        return ChunkingResult(
+            chunks=all_chunks,
+            success=True,
+            metrics=ChunkingMetrics(
+                chunk_count=len(all_chunks),
+                average_chunk_size=sum(sizes) / len(sizes) if sizes else 0.0,
+                boundary_hits=total_boundary_hits,
+                strategy="adaptive",
+                duration_ms=duration_ms,
+            ),
+        )
