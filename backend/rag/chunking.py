@@ -76,3 +76,21 @@ class FixedChunkingStrategy:
             duration_ms=duration_ms,
         )
         return ChunkingResult(chunks=chunks, success=True, metrics=metrics)
+
+
+@dataclass
+class Boundary:
+    """A candidate split point in text."""
+
+    position: int  # character offset
+    priority: int  # lower = higher priority
+    label: str  # e.g., "heading", "paragraph", "sentence"
+
+
+class BoundaryRule(Protocol):
+    """Protocol for boundary detection rules.
+
+    Rules MUST NOT modify text. They only identify candidate boundaries.
+    """
+
+    def detect(self, document: Document) -> list[Boundary]: ...

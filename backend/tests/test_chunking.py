@@ -116,3 +116,21 @@ class TestFixedChunkingStrategy:
         ]
         result = strategy.split(docs)
         assert result.metrics.chunk_count > 2  # both docs should produce chunks
+
+
+from backend.rag.chunking import Boundary, BoundaryRule
+
+
+class TestBoundary:
+    def test_boundary_creation(self):
+        b = Boundary(position=10, priority=1, label="heading")
+        assert b.position == 10
+        assert b.priority == 1
+        assert b.label == "heading"
+
+    def test_boundary_ordering(self):
+        b1 = Boundary(position=20, priority=3, label="paragraph")
+        b2 = Boundary(position=10, priority=1, label="heading")
+        boundaries = sorted([b1, b2], key=lambda b: b.position)
+        assert boundaries[0].position == 10
+        assert boundaries[1].position == 20
