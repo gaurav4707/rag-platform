@@ -164,3 +164,34 @@ class SentenceRule:
         for match in self._PATTERN.finditer(document.page_content):
             boundaries.append(Boundary(position=match.end() - 1, priority=5, label="sentence"))
         return boundaries
+
+
+class BoundaryDetector:
+    """Runs boundary rules and merges/deduplicates results.
+
+    Boundaries are sorted by position. At the same position, the
+    lowest priority value (highest priority) wins.
+    """
+
+    def __init__(self, rules: list[BoundaryRule] | None = None):
+        self._rules: list[BoundaryRule] = rules if rules is not None else [
+            HeadingRule(), NumberedSectionRule(), ParagraphRule(),
+            ListRule(), SentenceRule(),
+        ]
+
+    def detect(self, document: Document) -> list[Boundary]:
+        all_boundaries: list[Boundary] = []
+        for rule in self._rules:
+            all_boundaries.extend(rule.detect(document))
+
+        # Sort by position, then by priority (lower = higher priority)
+        all_boundaries.sort(key=lambda b: (b.position, b.priority))
+
+        # Deduplicate: keep lowest priority at each position
+        deduplicated: list[Boundary] = []
+        for b in all_boundaries:
+            if deduplicated and deduplicated[-1].position == b.position:
+                continue  # same position, keep the earlier (lower priority value)
+            deduplicated.append(b)
+
+        return deduplicated

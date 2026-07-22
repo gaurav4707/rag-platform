@@ -217,3 +217,51 @@ class TestNumberedSectionRule:
         boundaries = rule.detect(doc)
         assert len(boundaries) == 3
         assert all(b.label == "numbered_section" for b in boundaries)
+
+
+from backend.rag.chunking import BoundaryDetector
+
+
+class TestBoundaryDetector:
+    def test_detects_heading_and_paragraph(self):
+        detector = BoundaryDetector()
+        doc = Document(
+            page_content="# Title\n\nFirst paragraph.\n\nSecond paragraph.",
+            metadata={},
+        )
+        boundaries = detector.detect(doc)
+        labels = [b.label for b in boundaries]
+        assert "heading" in labels
+        assert "paragraph" in labels
+
+    def test_sorts_by_position(self):
+        detector = BoundaryDetector()
+        doc = Document(
+            page_content="# Title\n\nSome text.\n\nMore text.",
+            metadata={},
+        )
+        boundaries = detector.detect(doc)
+        positions = [b.position for b in boundaries]
+        assert positions == sorted(positions)
+
+    def test_deduplicates_same_position(self):
+        detector = BoundaryDetector()
+        doc = Document(
+            page_content="HEADING\n\nParagraph.",
+            metadata={},
+        )
+        boundaries = detector.detect(doc)
+        positions_at_0 = [b for b in boundaries if b.position == 0]
+        assert len(positions_at_0) <= 1
+
+    def test_empty_text(self):
+        detector = BoundaryDetector()
+        doc = Document(page_content="", metadata={})
+        boundaries = detector.detect(doc)
+        assert boundaries == []
+
+    def test_custom_rules(self):
+        detector = BoundaryDetector(rules=[])
+        doc = Document(page_content="# Title\n\nParagraph.", metadata={})
+        boundaries = detector.detect(doc)
+        assert boundaries == []
