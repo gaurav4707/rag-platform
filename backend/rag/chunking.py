@@ -6,7 +6,6 @@ Strategies only decide chunk boundaries — no metadata enrichment.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Sequence
 
 from langchain_core.documents import Document
 
