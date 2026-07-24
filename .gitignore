@@ -64,7 +64,6 @@ pnpm-debug.log*
 
 backend/storage/uploads/
 backend/storage/chroma_langchain_db
+backend/storage/parents/
 .playwright-mcp/
-benchmark_results/
 .skills/
-react-1.0.0/

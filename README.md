@@ -73,7 +73,10 @@ source .venv/bin/activate
 pip install -r ../requirements.txt
 
 # Set your Groq API key
-export GROQ_API_KEY=your_key_here
+Set-Content -Path .env -Value "GROQ_API_KEY=your_key"
+
+# Run command to install Embeddings Model
+python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('BAAI/bge-base-en-v1.5')"             
 
 # Run the server
 python -m uvicorn app:app --reload --port 8000
