@@ -35,4 +35,4 @@ def _list_documents() -> tuple[str, list[dict[str, Any]]]:
     return serialized, documents
 
 
-list_documents: Any = tool(response_format="content_and_artifact")(_list_documents)
+list_documents: Any = tool("list_documents", response_format="content_and_artifact")(_list_documents)

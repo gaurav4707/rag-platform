@@ -69,8 +69,8 @@ Frontend → API → Services → Agent → Tool Registry → Tools → Retrieve
 ```bash
 cd backend
 python -m venv .venv
-source .venv/bin/activate
-pip install -r ../requirements.txt
+.venv/Scripts/activate
+uv pip install -r ../requirements.txt
 
 # Set your Groq API key
 Set-Content -Path .env -Value "GROQ_API_KEY=your_key"

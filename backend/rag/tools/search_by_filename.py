@@ -47,4 +47,4 @@ def _search_by_filename(filename: str) -> tuple[str, list[dict[str, Any]]]:
     return serialized, documents
 
 
-search_by_filename: Any = tool(response_format="content_and_artifact")(_search_by_filename)
+search_by_filename: Any = tool("search_by_filename", response_format="content_and_artifact")(_search_by_filename)

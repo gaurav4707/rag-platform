@@ -11,7 +11,7 @@ from langchain_core.messages import ToolMessage
 
 from backend.models.rag_models import ChatResult, RetrievalResult, SourceItem
 from backend.rag.tool_executor import ToolExecutor, ConversationState, ToolExecutionResult, get_tool_executor
-from backend.rag.prompts import build_prompt, build_system_prompt
+from backend.rag.prompts import build_prompt, build_system_prompt, build_system_message
 from backend.rag.citations import build_sources
 from backend.rag.retrieval_utils import merge_retrieval_results
 from backend.providers import get_llm
@@ -50,6 +50,9 @@ async def stream_events(question: str) -> AsyncGenerator[tuple[str, object], Non
     tool_map = executor.tool_map
 
     state = ConversationState()
+    # Inject grounding system prompt so the LLM always knows to use
+    # retrieved PDF context and to be concise, regardless of model defaults.
+    state.add_system_message(build_system_message().content)
     state.add_user_message(question)
 
     iteration = 0
@@ -59,6 +62,9 @@ async def stream_events(question: str) -> AsyncGenerator[tuple[str, object], Non
     while iteration < max_iterations:
         iteration += 1
         logger.debug("Tool loop iteration %d/%d", iteration, max_iterations)
+
+        # Diagnostic logging for bound tools (names only, safe for production)
+        logger.debug("Bound tools: %s", [t.name for t in tools])
 
         # Bind tools to LLM for this iteration
         llm_with_tools = llm.bind_tools(tools)
@@ -76,7 +82,7 @@ async def stream_events(question: str) -> AsyncGenerator[tuple[str, object], Non
             [tc["name"] for tc in (tool_calls or [])],
         )
         if not tool_calls:
-# No tool calls - final answer, stream it
+            # No tool calls - final answer, stream it
             logger.debug("LLM returned final answer (no tool calls)")
             final_answer = response.content if isinstance(response.content, str) else str(response.content or "")
             async for item in _stream_final_answer(state, final_answer, llm):
@@ -91,6 +97,13 @@ async def stream_events(question: str) -> AsyncGenerator[tuple[str, object], Non
                 max_tools_per_response,
             )
             tool_calls = tool_calls[:max_tools_per_response]
+
+        # In standard chat protocols (OpenAI, Groq/Harmony, Anthropic), the assistant
+        # message requesting tool calls MUST precede the tool result messages!
+        state.add_assistant_message(
+            content=str(response.content or ""),
+            tool_calls=tool_calls,
+        )
 
         # Execute all tool calls
         for tool_call in tool_calls:
@@ -119,22 +132,18 @@ async def stream_events(question: str) -> AsyncGenerator[tuple[str, object], Non
             })()
             yield "tool_calls", tool_call_data
 
-            # Add tool result to conversation
+            # Add tool result to conversation (following the assistant message)
             state.add_tool_message(
                 tool_call_id=tool_call_id,
                 content=execution_result.content,
                 artifact=execution_result.artifact,
+                name=tool_name,
             )
 
             # Track retrieval results for citations
             if tool_name == "retrieve_context" and execution_result.artifact:
                 state.retrieval_results.append(execution_result.artifact)
 
-        # Add assistant message with tool calls to conversation
-        state.add_assistant_message(
-            content=str(response.content or ""),
-            tool_calls=tool_calls,
-        )
 
     # Max iterations exceeded
     logger.warning("Max tool iterations (%d) exceeded", max_iterations)

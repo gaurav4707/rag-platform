@@ -28,9 +28,10 @@ export function mapToCitationViewModel(source: Source): CitationViewModel {
 
 export function formatCitationText(vm: CitationViewModel): string {
   const base = `Source: ${vm.filename}`;
-  if (vm.page != null) return `${base} (p. ${vm.page})`;
+  // Page number display temporarily hidden
   return base;
 }
+
 
 export function formatPageRef(page: number | null): string | null {
   if (page == null) return null;

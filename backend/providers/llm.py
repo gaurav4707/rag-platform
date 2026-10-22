@@ -17,9 +17,19 @@ def _create_groq_llm():
         max_retries=LLM_MAX_RETRIES,
     )
 
+def _create_openrouter_llm():
+    from langchain_openrouter import ChatOpenRouter
+    return ChatOpenRouter(
+        model=LLM_MODEL,
+        max_tokens=LLM_MAX_TOKENS,
+        timeout=LLM_TIMEOUT,
+        max_retries=LLM_MAX_RETRIES,
+    )
+
 
 _LLM_REGISTRY = {
     "groq": _create_groq_llm,
+    "openrouter": _create_openrouter_llm,
 }
 
 

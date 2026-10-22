@@ -289,4 +289,4 @@ def _retrieve_context(
         )
 
 
-retrieve_context: Any = tool(response_format="content_and_artifact")(_retrieve_context)
+retrieve_context: Any = tool("retrieve_context", response_format="content_and_artifact")(_retrieve_context)

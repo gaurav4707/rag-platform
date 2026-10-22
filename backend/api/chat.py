@@ -42,6 +42,7 @@ async def chat_stream(request: ChatRequest, http_request: Request):
         stream = rag_service.stream_answer(request.message)
         tool_calls: list[dict] = []
         retrieval_result = None
+        agent_sources: list | None = None  # sources from agent metadata event
         first_token = True
 
         try:
@@ -76,21 +77,33 @@ async def chat_stream(request: ChatRequest, http_request: Request):
                     )
                     if tool_name == "retrieve_context" and artifact:
                         retrieval_result = artifact
+                elif kind == "metadata":
+                    # Agent emits a final metadata event with pre-built sources.
+                    # Capture them here; they take priority over local reconstruction.
+                    agent_sources = item.get("sources") if isinstance(item, dict) else None
+                    agent_tool_calls = item.get("tool_calls") if isinstance(item, dict) else None
+                    if agent_tool_calls:
+                        tool_calls = agent_tool_calls
 
             # Check for client disconnection before sending final event
             if await http_request.is_disconnected():
                 tracker.finish_cancelled()
                 return
 
-            # Build sources from retrieval result
-            sources = []
-            if retrieval_result:
+            # Use sources from agent metadata event when available (preferred path).
+            # Fall back to local reconstruction from retrieval artifact when the
+            # agent did not emit a metadata event (e.g. error paths).
+            if agent_sources is not None:
+                sources_payload = agent_sources
+            elif retrieval_result:
                 from backend.rag.citations import build_sources
-                sources = build_sources(retrieval_result)
+                sources_payload = [s.__dict__ for s in build_sources(retrieval_result)]
+            else:
+                sources_payload = []
 
             final = {
                 "done": True,
-                "sources": [s.__dict__ for s in sources],
+                "sources": sources_payload,
                 "tool_calls": tool_calls,
             }
             yield f"data: {json.dumps(final)}\n\n"

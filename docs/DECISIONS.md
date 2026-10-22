@@ -2873,3 +2873,157 @@ Naming the interface `BaseCompressionScorer` would be more obvious but would req
 
 # Decision Guidelines
 
+
+---
+
+# ADR-034
+
+## Title
+
+System Prompt Injection in Agentic Conversation Loop
+
+**Status**
+
+Accepted
+
+### Decision
+
+A `SystemMessage` containing grounding, conciseness, and tool-use instructions is prepended to every agentic conversation before the `HumanMessage` (user question). This applies to both `ToolExecutor.execute()` (non-streaming) and `agent.stream_events()` (streaming).
+
+Previously, the grounding instructions in `prompts.py` were only used as a fallback when the LLM returned an empty answer — they were never sent to the LLM during the primary agentic tool-calling loop.
+
+The `SystemMessage` is produced by `build_system_message()` in `prompts.py`, which returns a LangChain-typed `SystemMessage` containing the output of `build_agentic_system_prompt()`. This keeps the construction provider-agnostic and centralized in the Prompt Builder module.
+
+### Reason
+
+Without a `SystemMessage`, the LLM enters the agentic tool loop with no grounding instructions. Models that have strong parametric knowledge (e.g., large OpenAI-compatible models) will answer questions directly from general training data rather than invoking `retrieve_context`, bypassing PDF retrieval entirely.
+
+This violates the RAG grounding contract and causes:
+
+1. Answers not based on uploaded PDFs
+2. No tool calls — no retrieval — no citations
+3. Verbose responses without conciseness constraints
+
+### Affected Modules
+
+- `backend/rag/prompts.py` — added `build_system_message()` and `build_agentic_system_prompt()`
+- `backend/rag/tool_executor.py` — `ConversationState.add_system_message()`, injection in `execute()`
+- `backend/rag/agent.py` — injection in `stream_events()`
+
+### Alternatives Considered
+
+- Hardcode instructions in `ConversationState` — rejected (violates Prompt Builder ownership)
+- Add tool descriptions directly to each tool's LangChain docstring — insufficient for global behavior rules
+- Use prompt templates — adds complexity without architectural benefit for this scope
+
+### Consequences
+
+Pros:
+
+- LLM always receives grounding and conciseness instructions regardless of provider or model
+- Retrieval tool calls are reliably triggered for document questions
+- Citations are populated correctly because retrieval is not skipped
+
+Cons:
+
+- System prompt increases prompt token count on every request (~700 tokens)
+- Provider must support `SystemMessage` (all supported providers do)
+
+### Revisit When
+
+- A model is adopted that requires provider-specific system prompt formatting
+- Conversation memory is introduced (system prompt may need dynamic injection per turn)
+
+---
+
+# ADR-035
+
+## Title
+
+LLM Max Output Token Cap
+
+**Status**
+
+Accepted
+
+### Decision
+
+`LLM_MAX_TOKENS` in `config.py` is set to `1024` (previously `None`). This cap is passed to the LLM provider factory in `providers/llm.py` via the existing `max_tokens` parameter on `ChatGroq`.
+
+### Reason
+
+Setting `max_tokens = None` delegates response length entirely to the model's default behavior. Large models (e.g., `openai/gpt-oss-120b`) have very high default output limits and will produce verbose responses by default. A token cap provides a hard upper bound to complement the soft conciseness instructions in the system prompt.
+
+`1024` tokens is sufficient for detailed, multi-paragraph answers from a RAG system answering document-specific questions, while preventing runaway responses.
+
+### Affected Modules
+
+- `backend/config.py` — `LLM_MAX_TOKENS = 1024`
+
+### Alternatives Considered
+
+- Rely solely on system prompt conciseness instructions — insufficient for models that ignore soft instructions
+- Per-request token configuration via API — adds UI complexity not warranted for MVP
+- Higher cap (e.g., 4096) — unnecessary for current use case; reduces latency savings
+
+### Consequences
+
+Pros:
+
+- Prevents excessively long model responses regardless of model defaults
+- Complements system prompt grounding rules as a hard constraint
+- Consistent with existing provider abstraction (no provider-specific code scattered elsewhere)
+
+Cons:
+
+- May truncate legitimately long answers for very complex queries
+- Value may need tuning as use cases evolve
+
+### Revisit When
+
+- Use cases require longer answers (e.g., document summarization tool)
+- A different model with different default behavior is adopted
+
+---
+
+# ADR-036
+
+## Title
+
+Citation Pipeline: Metadata Event Priority over Local Reconstruction
+
+**Status**
+
+Accepted
+
+### Decision
+
+The `/chat/stream` SSE handler in `api/chat.py` now handles the `"metadata"` event emitted by `agent.stream_events()`. When the metadata event carries `sources`, those are used as the citation payload for the `done` SSE event. Local reconstruction from the `retrieve_context` tool artifact is retained as a fallback for error paths where the agent does not emit a metadata event.
+
+Previously, the API layer completely ignored the `"metadata"` event and independently rebuilt citations from the last captured `retrieve_context` artifact. This created two competing citation mechanisms and caused citations to be missing whenever no tool call artifact was captured (e.g., when the model answered without calling tools).
+
+### Reason
+
+The agent's `_stream_final_answer` already builds citations via `build_sources(merged_retrieval)` and emits them in a `"metadata"` event. The API ignoring this event meant the agent's citation work was discarded, and the fallback reconstruction was incomplete in many scenarios.
+
+### Affected Modules
+
+- `backend/api/chat.py` — added `elif kind == "metadata"` handler
+
+### Consequences
+
+Pros:
+
+- Single authoritative citation path through the agent
+- Agent's `merge_retrieval_results` correctly handles multiple retrieval calls
+- Citations populated even when agent answers with non-standard tool combinations
+
+Cons:
+
+- API layer now depends on agent emitting the metadata event in all paths
+- Fallback still needed for error paths — adds minor complexity
+
+### Revisit When
+
+- Agent event protocol is formalized into a typed schema
+- Multiple concurrent agents are introduced

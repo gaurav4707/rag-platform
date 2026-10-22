@@ -12,11 +12,11 @@ from dataclasses import dataclass, field
 from typing import Any, AsyncGenerator
 
 from langchain_core.tools import BaseTool
-from langchain_core.messages import HumanMessage, AIMessage, ToolMessage
+from langchain_core.messages import HumanMessage, AIMessage, ToolMessage, SystemMessage
 
 from backend.rag.tool_registry import get_tools
 from backend.models.rag_models import RetrievalResult, ChatResult, SourceItem
-from backend.rag.prompts import build_prompt, build_system_prompt
+from backend.rag.prompts import build_prompt, build_system_prompt, build_system_message
 from backend.rag.citations import build_sources
 from backend.rag.retrieval_utils import merge_retrieval_results
 from backend.providers import get_llm
@@ -45,6 +45,10 @@ class ConversationState:
     retrieval_results: list[RetrievalResult] = field(default_factory=list)
     tool_execution_results: list[ToolExecutionResult] = field(default_factory=list)
 
+    def add_system_message(self, content: str) -> None:
+        """Prepend a system message. Must be called before add_user_message."""
+        self.messages.append(SystemMessage(content=content))
+
     def add_user_message(self, content: str) -> None:
         self.messages.append(HumanMessage(content=content))
 
@@ -54,10 +58,21 @@ class ConversationState:
             msg.tool_calls = tool_calls
         self.messages.append(msg)
 
-    def add_tool_message(self, tool_call_id: str, content: Any, artifact: Any = None) -> None:
+    def add_tool_message(
+        self,
+        tool_call_id: str,
+        content: Any,
+        artifact: Any = None,
+        name: str | None = None,
+    ) -> None:
         # Tool content can be non-string (e.g., list/dict). Ensure we pass a string to ToolMessage.
         content_str = content if isinstance(content, str) else str(content or "")
-        self.messages.append(ToolMessage(content=content_str, tool_call_id=tool_call_id))
+        kwargs: dict[str, Any] = {"content": content_str, "tool_call_id": tool_call_id}
+        if name:
+            kwargs["name"] = name
+        if artifact is not None:
+            kwargs["artifact"] = artifact
+        self.messages.append(ToolMessage(**kwargs))
 
     def get_messages_for_llm(self) -> list:
         """Return messages formatted for LLM consumption."""
@@ -104,12 +119,18 @@ class ToolExecutor:
         logger.debug("Starting tool execution for question: %s", question[:100])
 
         state = ConversationState()
+        # Inject grounding system prompt so the LLM always knows to use
+        # retrieved PDF context and to be concise, regardless of model defaults.
+        state.add_system_message(build_system_message().content)
         state.add_user_message(question)
 
         iteration = 0
         while iteration < self.max_iterations:
             iteration += 1
             logger.debug("Tool loop iteration %d/%d", iteration, self.max_iterations)
+
+            # Diagnostic logging for bound tools (names only, safe for production)
+            logger.debug("Bound tools: %s", [t.name for t in self.tools])
 
             # Bind tools to LLM for this iteration
             llm_with_tools = self.llm.bind_tools(self.tools)
@@ -133,6 +154,13 @@ class ToolExecutor:
                 )
                 tool_calls = tool_calls[:self.max_tools_per_response]
 
+            # In standard chat protocols (OpenAI, Groq/Harmony, Anthropic), the assistant
+            # message requesting tool calls MUST precede the tool result messages!
+            state.add_assistant_message(
+                content=response.content if isinstance(response.content, str) else "",
+                tool_calls=tool_calls,
+            )
+
             # Execute all tool calls
             for tool_call in tool_calls:
                 tool_name = tool_call["name"]
@@ -151,22 +179,18 @@ class ToolExecutor:
                     "output": execution_result.content,
                 })
 
-                # Add tool result to conversation
+                # Add tool result to conversation (following the assistant message)
                 state.add_tool_message(
                     tool_call_id=tool_call_id,
                     content=execution_result.content,
                     artifact=execution_result.artifact,
+                    name=tool_name,
                 )
 
                 # Track retrieval results for citations
                 if tool_name == "retrieve_context" and execution_result.artifact:
                     state.retrieval_results.append(execution_result.artifact)
 
-            # Add assistant message with tool calls to conversation
-            state.add_assistant_message(
-                content=response.content if isinstance(response.content, str) else "",
-                tool_calls=tool_calls,
-            )
 
         # Max iterations exceeded
         logger.warning("Max tool iterations (%d) exceeded", self.max_iterations)

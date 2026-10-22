@@ -34,8 +34,11 @@ export const CitationCard = memo(function CitationCard({ citation }: CitationCar
     notifyCopy(toast, "Page reference");
   }
 
-  const pageRef = formatPageRef(citation.page);
+  // Page number display temporarily hidden per requirement
+  const SHOW_PAGE_NUMBER = false;
+  const pageRef = SHOW_PAGE_NUMBER ? formatPageRef(citation.page) : null;
   const scoreText = formatScore(citation.score);
+
 
   return (
     <Card padding={false} className="transition-colors hover:border-surface-300">

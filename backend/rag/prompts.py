@@ -8,6 +8,7 @@ import logging
 from dataclasses import dataclass
 from typing import Optional
 
+from langchain_core.messages import SystemMessage
 from backend.models.rag_models import RetrievalResult, RetrievedChunk
 from backend.config import CHUNK_SIZE, CHUNK_OVERLAP
 from backend.rag.tools import get_tools
@@ -136,9 +137,17 @@ GROUNDING RULES:
 - Answer ONLY using the provided retrieved context.
 - If the answer cannot be determined from the context, clearly state: "I don't know based on the available documents."
 - Do not fabricate, infer, or hallucinate facts not present in the context.
+- Never use general model knowledge to fill missing document information.
 - Prefer precise, direct answers over speculative ones.
 - When multiple sources provide relevant information, synthesize them while preserving attribution.
 - Preserve technical terminology and specific details from the source documents.
+
+CONCISENESS RULES:
+- Answer the user's question directly and concisely.
+- Do not repeat or rephrase the question.
+- Provide relevant context and supporting details from the documents where helpful
+- Do not unnecessarily summarize the entire document.
+- Stop as soon as you have answered the question completely.
 
 CITATION GUIDANCE:
 - When information comes from multiple retrieved sources, synthesize the answer while preserving attribution.
@@ -151,6 +160,7 @@ BEHAVIOR:
 - Explain concepts in your own words - do not copy large passages verbatim.
 - Ignore irrelevant retrieved passages.
 - If the question is ambiguous, ask for clarification rather than guessing."""
+
 
 
 def build_user_question_section(question: str) -> str:
@@ -240,6 +250,28 @@ def build_system_prompt() -> str:
     base_prompt = _build_base_system_prompt()
     tool_descriptions = build_tool_descriptions()
     return base_prompt + tool_descriptions
+
+
+def build_agentic_system_prompt() -> str:
+    """Build the system prompt for the agentic tool-calling loop.
+
+    This is the system prompt injected at the beginning of every agentic
+    conversation so the LLM knows:
+    1. It must retrieve context before answering document questions.
+    2. It must ground its answer exclusively in the retrieved context.
+    3. It must be concise.
+    4. What tools are available.
+    """
+    return build_system_prompt()
+
+
+def build_system_message() -> SystemMessage:
+    """Return the agentic system prompt as a LangChain SystemMessage.
+
+    This should be prepended to every conversation in the agentic loop
+    so the LLM always receives grounding and conciseness instructions.
+    """
+    return SystemMessage(content=build_agentic_system_prompt())
 
 
 def build_prompt(question: str, retrieval_result: RetrievalResult) -> str:

@@ -46,9 +46,9 @@ EMBEDDING_MODEL = "BAAI/bge-base-en-v1.5"
 EMBEDDING_LOCAL_FILES_ONLY = True
 
 # LLM Provider
-LLM_PROVIDER = "groq"
-LLM_MODEL = "llama-3.1-8b-instant"
-LLM_MAX_TOKENS = None
+LLM_PROVIDER = "openrouter"
+LLM_MODEL = "nvidia/nemotron-3.5-lightning:free"
+LLM_MAX_TOKENS = 1536
 LLM_TIMEOUT = None
 LLM_MAX_RETRIES = 2
 
@@ -67,7 +67,7 @@ PARENT_STORAGE_DIR = STORAGE_DIR / "parents"
 # Retrieval
 # -----------------------------------------------------------------------------
 
-TOP_K = 4
+TOP_K = 35
 
 # -----------------------------------------------------------------------------
 # Chunking
